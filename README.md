@@ -1,9 +1,7 @@
-mbtrack2
+mbtrack2-cuda
 ========
 
-mbtrack2 is a coherent object-oriented framework written in python to work on collective effects in synchrotrons.
-
-mbtrack2 is composed of different modules allowing to easily write scripts for single bunch or multi-bunch tracking using MPI parallelization in a transparent way. The base of the tracking model of mbtrack2 is inspired by mbtrack, a C multi-bunch tracking code initially developed at SOLEIL.
+mbtrack2-cuda
 
 Installation
 ------------
