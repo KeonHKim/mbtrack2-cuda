@@ -1,0 +1,15 @@
+name: mbtrack2
+dependencies:
+  - python>=3.6
+  - numpy
+  - pandas
+  - scipy
+  - h5py
+  - mpi4py
+  - matplotlib
+  - seaborn
+  - mpmath
+  - ipykernel
+  - pip
+  - pip: 
+    - accelerator-toolbox
