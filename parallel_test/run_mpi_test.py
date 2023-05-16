@@ -29,6 +29,8 @@ from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
 # Configuration
+np.random.seed(1)
+
 MPI_PARALLEL = False 
 
 MONITORING = True 

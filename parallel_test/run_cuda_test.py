@@ -29,6 +29,7 @@ from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
 # Configuration
+np.random.seed(1)
 CUDA_PARALLEL = False 
 
 MONITORING = True
@@ -64,7 +65,7 @@ ring = Synchrotron(h=h, optics=optics, particle=particle, L=L, E0=E0, ac=ac,
 mp_number = 1e4
 Vc = 3.5e6
 
-turns = 2000
+turns = 300
 
 # Geometry and beam
 long = LongitudinalMap(ring)
