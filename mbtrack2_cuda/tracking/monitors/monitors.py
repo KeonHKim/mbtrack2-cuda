@@ -230,13 +230,7 @@ class Monitor(Element, metaclass=ABCMeta):
         if self.track_count % self.save_every == 0:
             
             if isinstance(object_to_save, Beam):
-                if (object_to_save.mpi_switch == True):
-                    if object_to_save.mpi.bunch_num == self.bunch_number:
-                        bunch = object_to_save[object_to_save.mpi.bunch_num]
-                    else:
-                        save = False
-                else:
-                    bunch = object_to_save[self.bunch_number]
+                bunch = object_to_save[self.bunch_number]
             elif isinstance(object_to_save, Bunch):
                 bunch = object_to_save
             else:                            
@@ -461,10 +455,7 @@ class BeamMonitor(Monitor):
         beam : Beam object
         """     
         if self.track_count % self.save_every == 0:
-            if (beam.mpi_switch == True):
-                self.to_buffer(beam[beam.mpi.bunch_num], beam.mpi.bunch_num)
-            else:
-                self.to_buffer_no_mpi(beam)
+            self.to_buffer_no_mpi(beam)
                     
         self.track_count += 1
         
@@ -838,15 +829,9 @@ class WakePotentialMonitor(Monitor):
         wake_potential_to_save : WakePotential object
         """
         if isinstance(object_to_save, Beam):
-            if (object_to_save.mpi_switch == True):
-                if object_to_save.mpi.bunch_num == self.bunch_number:
-                    save = True
-                else:
-                    save = False
-            else:
-                raise NotImplementedError("WakePotentialMonitor for Beam " +
-                                          "objects is only available " +
-                                          "with MPI mode.")
+            raise NotImplementedError("WakePotentialMonitor for Beam " +
+                                        "objects is only available " +
+                                        "with MPI mode.")
         elif isinstance(object_to_save, Bunch):
             save = True
         else:                            
@@ -1026,13 +1011,7 @@ class BunchSpectrumMonitor(Monitor):
         """
         save = True
         if isinstance(object_to_save, Beam):
-            if (object_to_save.mpi_switch == True):
-                if object_to_save.mpi.bunch_num == self.bunch_number:
-                    bunch = object_to_save[object_to_save.mpi.bunch_num]
-                else:
-                    save = False
-            else:
-                bunch = object_to_save[self.bunch_number]
+            bunch = object_to_save[self.bunch_number]
         elif isinstance(object_to_save, Bunch):
             bunch = object_to_save
         else:

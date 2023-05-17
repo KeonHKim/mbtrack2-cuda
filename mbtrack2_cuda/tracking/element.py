@@ -4,8 +4,9 @@ This module defines the most basic elements for tracking, including Element,
 an abstract base class which is to be used as mother class to every elements
 included in the tracking.
 """
-
 import numpy as np
+import numba
+from numba import cuda
 from abc import ABCMeta, abstractmethod
 from functools import wraps
 from mbtrack2_cuda.tracking.particles import Beam
@@ -55,8 +56,8 @@ class Element(metaclass=ABCMeta):
             if isinstance(args[1], Beam):
                 self = args[0]
                 beam = args[1]
-                if (beam.mpi_switch == True):
-                    track(self, beam[beam.mpi.bunch_num], *args[2:], **kwargs)
+                if (beam.cuda_switch == True):
+                    track(self, beam, *args[2:], **kwargs)
                 else:
                     for bunch in beam.not_empty:
                         track(self, bunch, *args[2:], **kwargs)
@@ -65,7 +66,7 @@ class Element(metaclass=ABCMeta):
                 bunch = args[1]
                 track(self, bunch, *args[2:], **kwargs)
         return track_wrapper
-        
+
 class LongitudinalMap(Element):
     """
     Longitudinal map for a single turn in the synchrotron.
@@ -89,8 +90,55 @@ class LongitudinalMap(Element):
         ----------
         bunch : Bunch or Beam object
         """
-        bunch["delta"] -= self.ring.U0 / self.ring.E0
-        bunch["tau"] += self.ring.ac * self.ring.T0 * bunch["delta"]
+        @cuda.jit
+        def track_kernel(delta, tau, U0, E0, ac, T0):
+
+            i, j = cuda.grid(2)
+
+            if False:
+            # shared memory test
+                local_i = cuda.threadIdx.x
+                local_j = cuda.threadIdx.y
+
+                delta_s = cuda.shared.array(threadperblock, numba.float32)
+
+                #Calculation of longitudinal  
+                delta_s[local_j, local_i] = delta[j, i] - U0 / E0
+                cuda.syncthreads()
+                tau[j, i] = tau[j, i] + ac * T0 * delta_s[local_j, local_i]
+
+                delta[j, i] = delta_s[local_j, local_i]
+            else:
+            # global memory
+                delta[j, i] = delta[j, i] - U0 / E0
+                tau[j, i] = tau[j, i] + ac * T0 * delta[j, i]
+
+        if isinstance(bunch, Beam):
+            beam = bunch
+            num_bunch = beam.__len__()
+            num_particle = beam[0].mp_number
+            delta = np.zeros((num_particle, num_bunch))
+            tau = np.zeros((num_particle, num_bunch))
+
+            for bunch_index, bunch_ref in enumerate(beam):
+                delta[:,bunch_index] = bunch_ref['delta']
+                tau[:,bunch_index] = bunch_ref['tau']
+            
+            threadperblock_x = 8 
+            threadperblock_y = 8 
+            threadperblock = (threadperblock_x, threadperblock_y) 
+            blockpergrid = (num_bunch // threadperblock_x + 1, num_particle // threadperblock_y + 1)
+
+            # Calculation in GPU 
+            track_kernel[blockpergrid, threadperblock](delta, tau, self.ring.U0, self.ring.E0, self.ring.ac, self.ring.T0)
+
+            for bunch_index, bunch_ref in enumerate(beam):
+                bunch_ref['delta'] = delta[:, bunch_index]
+                bunch_ref['tau'] = tau[:, bunch_index]
+
+        else:
+            bunch["delta"] -= self.ring.U0 / self.ring.E0
+            bunch["tau"] += self.ring.ac * self.ring.T0 * bunch["delta"]
 
 class SynchrotronRadiation(Element):
     """

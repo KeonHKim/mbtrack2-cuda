@@ -130,3 +130,6 @@ dmypy.json
 
 # tracking data
 *.hdf5
+
+# vscode
+.vscode

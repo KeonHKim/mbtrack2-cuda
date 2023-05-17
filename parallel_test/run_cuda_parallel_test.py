@@ -11,33 +11,33 @@ import warnings
 import numpy as np
 from scipy.constants import mu_0, c
 
-from mbtrack2.impedance import CircularResistiveWall
+from mbtrack2_cuda.impedance import CircularResistiveWall
 
-from mbtrack2.tracking import Synchrotron, Electron
-from mbtrack2.tracking import LongitudinalMap, TransverseMap
-from mbtrack2.tracking import SynchrotronRadiation
-from mbtrack2.tracking import RFCavity
-from mbtrack2.tracking import Beam
-from mbtrack2.tracking import WakePotential
+from mbtrack2_cuda.tracking import Synchrotron, Electron
+from mbtrack2_cuda.tracking import LongitudinalMap, TransverseMap
+from mbtrack2_cuda.tracking import SynchrotronRadiation
+from mbtrack2_cuda.tracking import RFCavity
+from mbtrack2_cuda.tracking import Beam
+from mbtrack2_cuda.tracking import WakePotential
 
-from mbtrack2.tracking.monitors import BeamMonitor
+from mbtrack2_cuda.tracking.monitors import BeamMonitor
 
-from mbtrack2.utilities import Optics
+from mbtrack2_cuda.utilities import Optics
 
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
 # Configuration
-MPI_PARALLEL = False 
+np.random.seed(1)
+CUDA_PARALLEL = True
 
-MONITORING = True 
-MPI_MONITORING = False 
+MONITORING = False 
 OUTPUT_FOLDER = "parallel_test"
-OUTPUT_FILENAME = "tracking_cpu"
+OUTPUT_FILENAME = "tracking_gpu"
 
 # Parameters
-h = 4 # Harmonic number of the accelerator.
+h = 1332 # Harmonic number of the accelerator.
 L = 799 # Ring circumference in [m].
 E0 = 4e9 # Nominal (total) energy of the ring in [eV].
 particle = Electron() # Particle considered.
@@ -61,10 +61,10 @@ ring = Synchrotron(h=h, optics=optics, particle=particle, L=L, E0=E0, ac=ac,
                    U0=U0, tau=tau, emit=emit, tune=tune, 
                    sigma_delta=sigma_delta, sigma_0=sigma_0, chro=chro)
 
-mp_number = 1e4
+mp_number = 4e4
 Vc = 3.5e6
 
-turns = 300
+turns = 10
 
 # Geometry and beam
 long = LongitudinalMap(ring)
@@ -74,7 +74,7 @@ MC = RFCavity(ring, m=1, Vc=Vc, theta = np.arccos(ring.U0/Vc))
 
 mybeam = Beam(ring)
 filling_pattern = np.ones(ring.h) * 10e-3 # Bunches with 10 mA
-mybeam.init_beam(filling_pattern, mp_per_bunch=mp_number, mpi=MPI_PARALLEL)
+mybeam.init_beam(filling_pattern, mp_per_bunch=mp_number, cuda=CUDA_PARALLEL)
 
 #Resistive Wall: Resistive wall impedance
 wake_length = 100e-12 
@@ -94,14 +94,15 @@ wake = WakePotential(ring, rw, n_bin=freq_num)
 
 if MONITORING is True: 
     OUTPUT_PATH = os.path.join(OUTPUT_FOLDER, OUTPUT_FILENAME)
-    beammonitor = BeamMonitor(h=ring.h, total_size=100, save_every=1, buffer_size=10, mpi_mode=MPI_MONITORING, file_name=f'{OUTPUT_FILENAME if MPI_PARALLEL else OUTPUT_PATH}')
+    beammonitor = BeamMonitor(h=ring.h, total_size=turns, save_every=1, buffer_size=10, file_name=OUTPUT_PATH)
 else:
     print('Beam monitor is disabled.')
 
 # Run simulation
-for i in tqdm(range(turns), desc=f'Core #{mybeam.mpi.bunch_num if MPI_PARALLEL is True else 0} Processing'):
+for i in tqdm(range(turns), desc='GPU Processing'):
 
     long.track(mybeam)
+# --------------------------------------- 여기서 부터 하나씩 쿠다 코드로 변경 --------------------------------------
     # trans.track(mybeam)
     # sr.track(mybeam)
     # MC.track(mybeam)
