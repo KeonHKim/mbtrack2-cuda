@@ -451,7 +451,7 @@ class Beam:
     
     def __init__(self, ring, bunch_list=None):
         self.ring = ring
-        self.mpi_switch = False
+        self.cuda_switch = False
         if bunch_list is None:
             self.init_beam(np.zeros((self.ring.h,1),dtype=bool))
         else:
@@ -526,7 +526,7 @@ class Beam:
         self._distance_between_bunches =  distance
         
     def init_beam(self, filling_pattern, current_per_bunch=1e-3, 
-                  mp_per_bunch=1e3, track_alive=True, mpi=False):
+                  mp_per_bunch=1e3, track_alive=True, cuda=False):
         """
         Initialize beam with a given filling pattern and marco-particle number 
         per bunch. Then initialize the different bunches with a 6D gaussian
@@ -559,8 +559,8 @@ class Beam:
             raise ValueError(("The length of filling pattern is {} ".format(len(filling_pattern)) + 
                               "but should be {}".format(self.ring.h)))
         
-        if mpi is True:
-            mp_per_bunch_mpi = mp_per_bunch
+        if cuda is True:
+            mp_per_bunch_cuda = mp_per_bunch
             mp_per_bunch = 1
         
         filling_pattern = np.array(filling_pattern)
@@ -586,12 +586,13 @@ class Beam:
         self.update_filling_pattern()
         self.update_distance_between_bunches()
         
-        if mpi is True:
-            self.mpi_init()
-            current = self[self.mpi.rank_to_bunch(self.mpi.rank)].current
-            bunch =  Bunch(self.ring, mp_per_bunch_mpi, current, track_alive)
-            bunch.init_gaussian()
-            self[self.mpi.rank_to_bunch(self.mpi.rank)] = bunch
+        if cuda is True:
+            self.cuda_switch = True
+            for bunch_num in range(len(filling_pattern)):
+                current = self[bunch_num].current
+                bunch = Bunch(self.ring, mp_per_bunch_cuda, current, track_alive)
+                bunch.init_gaussian()
+                self[bunch_num] = bunch
         else:
             for bunch in self.not_empty:
                 bunch.init_gaussian()
@@ -689,17 +690,11 @@ class Beam:
             bunch_cs[:,index] = bunch.cs_invariant
         return bunch_cs
     
-    def mpi_init(self):
-        """Switch on MPI parallelisation and initialise a Mpi object"""
-        from mbtrack2_cuda.tracking.parallel import Mpi
-        self.mpi = Mpi(self.filling_pattern)
-        self.mpi_switch = True
-        
     def mpi_gather(self):
         """Gather beam, all bunches of the different processors are sent to 
         all processors. Rather slow"""
         
-        if(self.mpi_switch == False):
+        if(self.cuda_switch == False):
             print("Error, mpi is not initialised.")
         
         bunch = self[self.mpi.bunch_num]
@@ -710,7 +705,7 @@ class Beam:
     def mpi_close(self):
         """Call mpi_gather and switch off MPI parallelisation"""
         self.mpi_gather()
-        self.mpi_switch = False
+        self.cuda_switch = False
         self.mpi = None
         
     def plot(self, var, option=None):

@@ -230,7 +230,7 @@ class FIRDamper(Element):
             self.track_sb(beam_or_bunch)
         elif isinstance(beam_or_bunch, Beam):
             beam = beam_or_bunch
-            if (beam.mpi_switch == True):
+            if (beam.cuda_switch == True):
                 self.track_sb(beam[beam.mpi.bunch_num])
             else:
                 if self.beam_no_mpi is False:

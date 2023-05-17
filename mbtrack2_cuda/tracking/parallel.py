@@ -123,6 +123,7 @@ class Mpi:
         """Return the bunch number corresponding to the current processor"""
         return self.rank_to_bunch(self.rank)
     
+    # This is not used at all
     @property
     def next_bunch(self):
         """Return the rank of the next tracked bunch"""
@@ -131,6 +132,7 @@ class Mpi:
         else:
             return 0
     
+    # This is not used at all
     @property
     def previous_bunch(self):
         """Return the rank of the previous tracked bunch"""
@@ -139,6 +141,7 @@ class Mpi:
         else:
             return max(self.table[:,0])
         
+    # This is not used at all
     def share_distributions(self, beam, dimensions="tau", n_bin=75):
         """
         Compute the bunch profiles and share it between the different bunches.
@@ -189,7 +192,8 @@ class Mpi:
             self.comm.Allgather([profile,  self.MPI.INT64_T], [self.__getattribute__(dim + "_profile"), self.MPI.INT64_T])
             
             self.__setattr__(dim + "_sorted_index", sorted_index)
-            
+    
+    # This is not used at all      
     def share_means(self, beam):
         """
         Compute the bunch means and share it between the different bunches.
