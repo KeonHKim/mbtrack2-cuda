@@ -99,9 +99,9 @@ else:
     print('Beam monitor is disabled.')
 
 # Run simulation
-for i in tqdm(range(turns), desc='GPU Processing'):
+for i in tqdm(range(1), desc='GPU Processing'):
 
-    long.track(mybeam)
+    long.track(mybeam, turns)
 # --------------------------------------- 여기서 부터 하나씩 쿠다 코드로 변경 --------------------------------------
     # trans.track(mybeam)
     # sr.track(mybeam)
