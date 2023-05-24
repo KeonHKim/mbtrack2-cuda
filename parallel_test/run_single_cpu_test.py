@@ -40,7 +40,7 @@ OUTPUT_FILENAME = "tracking_cpu"
 
 # Parameters
 h = 1332 # Harmonic number of the accelerator.
-L = 799 # Ring circumference in [m].
+L = 798.84 # Ring circumference in [m].
 E0 = 4e9 # Nominal (total) energy of the ring in [eV].
 particle = Electron() # Particle considered.
 ac = 7.857e-5 # Momentum compaction factor.
@@ -66,7 +66,7 @@ ring = Synchrotron(h=h, optics=optics, particle=particle, L=L, E0=E0, ac=ac,
 mp_number = 4e4
 Vc = 3.5e6
 
-turns = 10 
+turns = 100
 
 # Geometry and beam
 long = LongitudinalMap(ring)
@@ -75,7 +75,7 @@ sr = SynchrotronRadiation(ring)
 MC = RFCavity(ring, m=1, Vc=Vc, theta = np.arccos(ring.U0/Vc))
 
 mybeam = Beam(ring)
-filling_pattern = np.ones(ring.h) * 10e-3 # Bunches with 10 mA
+filling_pattern = np.ones(ring.h) * 1e-3 # Bunches with 1 mA
 mybeam.init_beam(filling_pattern, mp_per_bunch=mp_number, mpi=MPI_PARALLEL)
 
 #Resistive Wall: Resistive wall impedance
@@ -104,12 +104,14 @@ else:
 for i in tqdm(range(turns), desc=f'Core #{mybeam.mpi.bunch_num if MPI_PARALLEL is True else 0} Processing'):
 
     long.track(mybeam)
-    # trans.track(mybeam)
-    # sr.track(mybeam)
-    # MC.track(mybeam)
+    trans.track(mybeam)
+    sr.track(mybeam)
+    MC.track(mybeam)
     
     # Add the collective effects
     # wake.track(mybeam)
+
+    # print(mybeam.bunch_mean[4, h-1])
 
     # Monitor
     if MONITORING is True:
@@ -118,4 +120,7 @@ for i in tqdm(range(turns), desc=f'Core #{mybeam.mpi.bunch_num if MPI_PARALLEL i
 if MONITORING is True:
     beammonitor.close()
 
+#print(mybeam.bunch_mean[4, h-1])
+print(mybeam.bunch_list[0])
+print(mybeam.bunch_list[h-1])
 print("All tracking has been done.")

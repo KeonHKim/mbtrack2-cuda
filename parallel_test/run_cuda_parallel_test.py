@@ -14,7 +14,7 @@ from scipy.constants import mu_0, c
 from mbtrack2_cuda.impedance import CircularResistiveWall
 
 from mbtrack2_cuda.tracking import Synchrotron, Electron
-from mbtrack2_cuda.tracking import LongitudinalMap, TransverseMap
+from mbtrack2_cuda.tracking import LongitudinalMap, TransverseMap, CUDAMap
 from mbtrack2_cuda.tracking import SynchrotronRadiation
 from mbtrack2_cuda.tracking import RFCavity
 from mbtrack2_cuda.tracking import Beam
@@ -38,7 +38,7 @@ OUTPUT_FILENAME = "tracking_gpu"
 
 # Parameters
 h = 1332 # Harmonic number of the accelerator.
-L = 799 # Ring circumference in [m].
+L = 798.84 # Ring circumference in [m].
 E0 = 4e9 # Nominal (total) energy of the ring in [eV].
 particle = Electron() # Particle considered.
 ac = 7.857e-5 # Momentum compaction factor.
@@ -64,7 +64,7 @@ ring = Synchrotron(h=h, optics=optics, particle=particle, L=L, E0=E0, ac=ac,
 mp_number = 4e4
 Vc = 3.5e6
 
-turns = 10
+turns = 30000
 
 # Geometry and beam
 long = LongitudinalMap(ring)
@@ -73,7 +73,7 @@ sr = SynchrotronRadiation(ring)
 MC = RFCavity(ring, m=1, Vc=Vc, theta = np.arccos(ring.U0/Vc))
 
 mybeam = Beam(ring)
-filling_pattern = np.ones(ring.h) * 10e-3 # Bunches with 10 mA
+filling_pattern = np.ones(ring.h) * 1e-3 # Bunches with 1 mA
 mybeam.init_beam(filling_pattern, mp_per_bunch=mp_number, cuda=CUDA_PARALLEL)
 
 #Resistive Wall: Resistive wall impedance
@@ -90,6 +90,9 @@ radius = 5e-3
 rw = CircularResistiveWall(t, freq, length=40, rho=rho_Cu, radius=radius, exact=False)
 wake = WakePotential(ring, rw, n_bin=freq_num)
 
+#GPU Calculations
+cumap = CUDAMap(ring, m=1, Vc=Vc, theta = np.arccos(ring.U0/Vc))
+
 # Beam monitor is disabled temporarily
 
 if MONITORING is True: 
@@ -99,10 +102,16 @@ else:
     print('Beam monitor is disabled.')
 
 # Run simulation
-for i in tqdm(range(turns), desc='GPU Processing'):
+print('Turns: ' + str(turns))
+# culm: longitudinal map, cutm: transverse map, cusr: synchrotron radiation,
+# curfc: RF Cavity, curw: resistive wall
 
-    long.track(mybeam)
-# --------------------------------------- 여기서 부터 하나씩 쿠다 코드로 변경 --------------------------------------
+for i in tqdm(range(1), desc='GPU Processing'):
+
+    cumap.track(mybeam, turns, culm=True, cutm=True, cusr=True, curfc=True)
+    # long.track(mybeam)
+    # long.track(mybeam, turns)
+# --------------------------------------- Need to change into cuda codes from here --------------------------------------
     # trans.track(mybeam)
     # sr.track(mybeam)
     # MC.track(mybeam)
@@ -117,4 +126,7 @@ for i in tqdm(range(turns), desc='GPU Processing'):
 if MONITORING is True:
     beammonitor.close()
 
+#print(mybeam.bunch_mean[4, h-1])
+print(mybeam.bunch_list[0])
+print(mybeam.bunch_list[h-1])
 print("All tracking has been done.")
