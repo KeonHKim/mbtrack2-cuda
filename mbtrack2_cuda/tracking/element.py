@@ -80,7 +80,7 @@ class LongitudinalMap(Element):
         self.ring = ring
         
     @Element.parallel
-    def track(self, bunch):
+    def track(self, bunch, turns):
         """
         Tracking method for the element.
         No bunch to bunch interaction, so written for Bunch objects and
@@ -91,7 +91,7 @@ class LongitudinalMap(Element):
         bunch : Bunch or Beam object
         """
         @cuda.jit
-        def track_kernel(delta, tau, U0, E0, ac, T0):
+        def track_kernel(delta, tau, U0, E0, ac, T0, turns):
 
             i, j = cuda.grid(2)
 
@@ -110,8 +110,9 @@ class LongitudinalMap(Element):
                 delta[j, i] = delta_s[local_j, local_i]
             else:
             # global memory
-                delta[j, i] = delta[j, i] - U0 / E0
-                tau[j, i] = tau[j, i] + ac * T0 * delta[j, i]
+                for _ in range(turns):
+                    delta[j, i] = delta[j, i] - U0 / E0
+                    tau[j, i] = tau[j, i] + ac * T0 * delta[j, i]
 
         if isinstance(bunch, Beam):
             beam = bunch
@@ -121,8 +122,8 @@ class LongitudinalMap(Element):
             tau = np.zeros((num_particle, num_bunch))
 
             for bunch_index, bunch_ref in enumerate(beam):
-                delta[:,bunch_index] = bunch_ref['delta']
-                tau[:,bunch_index] = bunch_ref['tau']
+                delta[:, bunch_index] = bunch_ref['delta']
+                tau[:, bunch_index] = bunch_ref['tau']
             
             threadperblock_x = 8 
             threadperblock_y = 8 
@@ -130,7 +131,7 @@ class LongitudinalMap(Element):
             blockpergrid = (num_bunch // threadperblock_x + 1, num_particle // threadperblock_y + 1)
 
             # Calculation in GPU 
-            track_kernel[blockpergrid, threadperblock](delta, tau, self.ring.U0, self.ring.E0, self.ring.ac, self.ring.T0)
+            track_kernel[blockpergrid, threadperblock](delta, tau, self.ring.U0, self.ring.E0, self.ring.ac, self.ring.T0, turns)
 
             for bunch_index, bunch_ref in enumerate(beam):
                 bunch_ref['delta'] = delta[:, bunch_index]
