@@ -92,57 +92,8 @@ class LongitudinalMap(Element):
         ----------
         bunch : Bunch or Beam object
         """
-        @cuda.jit
-        def track_kernel(delta, tau, U0, E0, ac, T0, turns):
-
-            i, j = cuda.grid(2)
-
-            if False:
-            # shared memory test
-                local_i = cuda.threadIdx.x
-                local_j = cuda.threadIdx.y
-
-                delta_s = cuda.shared.array(threadperblock, numba.float32)
-
-                for _ in range(turns):
-                #Calculation of longitudinal  
-                    delta_s[local_j, local_i] = delta[j, i] - U0 / E0
-                    cuda.syncthreads()
-                    tau[j, i] = tau[j, i] + ac * T0 * delta_s[local_j, local_i]
-
-                    delta[j, i] = delta_s[local_j, local_i]
-            else:
-            # global memory
-                for _ in range(turns):
-                    delta[j, i] = delta[j, i] - U0 / E0
-                    tau[j, i] = tau[j, i] + ac * T0 * delta[j, i]
-
-        if isinstance(bunch, Beam):
-            beam = bunch
-            num_bunch = beam.__len__()
-            num_particle = beam[0].mp_number
-            delta = np.zeros((num_particle, num_bunch))
-            tau = np.zeros((num_particle, num_bunch))
-
-            for bunch_index, bunch_ref in enumerate(beam):
-                delta[:, bunch_index] = bunch_ref['delta']
-                tau[:, bunch_index] = bunch_ref['tau']
-            
-            threadperblock_x = 8 
-            threadperblock_y = 8 
-            threadperblock = (threadperblock_x, threadperblock_y) 
-            blockpergrid = (num_bunch // threadperblock_x + 1, num_particle // threadperblock_y + 1)
-
-            # Calculation in GPU 
-            track_kernel[blockpergrid, threadperblock](delta, tau, self.ring.U0, self.ring.E0, self.ring.ac, self.ring.T0, turns)
-
-            for bunch_index, bunch_ref in enumerate(beam):
-                bunch_ref['delta'] = delta[:, bunch_index]
-                bunch_ref['tau'] = tau[:, bunch_index]
-
-        else:
-            bunch["delta"] -= self.ring.U0 / self.ring.E0
-            bunch["tau"] += self.ring.ac * self.ring.T0 * bunch["delta"]
+        bunch["delta"] -= self.ring.U0 / self.ring.E0
+        bunch["tau"] += self.ring.ac * self.ring.T0 * bunch["delta"]
 
 class SynchrotronRadiation(Element):
     """
@@ -331,127 +282,173 @@ class CUDAMap(Element):
         bunch : Bunch or Beam object
         """
         @cuda.jit
-        def track_kernel(x, xp, y, yp, tau, delta, rand_delta, rand_xp, rand_yp, num_particle,
-                         num_bunch, num_p_x_b, U0, E0, ac, T0, sigma_delta, omega1, sigma_xp, sigma_yp,
-                         tau_h, tau_v, tau_l, rng_states_delta, rng_states_xp, rng_states_yp,
-                         m, Vc, theta, phase_advance_x_s, phase_advance_y_s, tune_x, tune_y, chro_x, chro_y,
-                         pi, matrix_00, matrix_01, matrix_10, matrix_11,
-                         matrix_33, matrix_34, matrix_43, matrix_44, alpha_x,
-                         alpha_y, beta_x, beta_y, gamma_x, gamma_y, 
+        def track_kernel(x_read, xp_read, y_read, yp_read, tau_read, delta_read, rand_xp, rand_yp, rand_delta,
+                         x_write, xp_write, y_write, yp_write, tau_write, delta_write, num_particle, num_bunch,
+                         U0, E0, ac, T0, sigma_delta, omega1, sigma_xp, sigma_yp,
+                         tau_h, tau_v, tau_l, rng_states, dispersion_x, dispersion_xp, dispersion_y, dispersion_yp,
+                         m, Vc, theta, tune_x, tune_y, chro_x, chro_y,
+                         pi, alpha_x, alpha_y, beta_x, beta_y, gamma_x, gamma_y, 
                          turns, track_error, culm, cutm, cusr, curfc):
-
+            
             i, j = cuda.grid(2)
 
-            if cutm:
+            local_i = cuda.threadIdx.x
+            local_j = cuda.threadIdx.y
 
-                local_i = cuda.threadIdx.x
-                local_j = cuda.threadIdx.y
+            x_write[j, i] = x_read[j, i]
+            xp_write[j, i] = xp_read[j, i]
+            y_write[j, i] = y_read[j, i]
+            yp_write[j, i] = yp_read[j, i]
+            tau_write[j, i] = tau_read[j, i]
+            delta_write[j, i] = delta_read[j, i]
+            
+            tau_shared = cuda.shared.array(threadperblock, numba.float32)
+            tau_shared[local_j, local_i] = tau_write[j, i]
+            delta_shared = cuda.shared.array(threadperblock, numba.float32)
+            delta_shared[local_j, local_i] = delta_write[j, i]
+            cuda.syncthreads()
 
-                phase_advance_x_s = cuda.shared.array(threadperblock, numba.float32)
-                phase_advance_y_s = cuda.shared.array(threadperblock, numba.float32)
-                x_s = cuda.shared.array(threadperblock, numba.float32)
-                xp_s = cuda.shared.array(threadperblock, numba.float32)
-                y_s = cuda.shared.array(threadperblock, numba.float32)
-                yp_s = cuda.shared.array(threadperblock, numba.float32)
+            # No Selection Error 
+            if (culm == False) and (cutm == False) and (cusr == False) and (curfc == False):
+               track_error[0] = 1
+
+            if cutm or cusr:
+                x_shared = cuda.shared.array(threadperblock, numba.float32)
+                xp_shared = cuda.shared.array(threadperblock, numba.float32)
+                y_shared = cuda.shared.array(threadperblock, numba.float32)
+                yp_shared = cuda.shared.array(threadperblock, numba.float32)
+
+                x_shared_f = cuda.shared.array(threadperblock, numba.float32)
+                xp_shared_f = cuda.shared.array(threadperblock, numba.float32)
+                y_shared_f = cuda.shared.array(threadperblock, numba.float32)
+                yp_shared_f = cuda.shared.array(threadperblock, numba.float32)
+
+                x_shared[local_j, local_i] = x_write[j, i]
+                xp_shared[local_j, local_i] = xp_write[j, i]
+                y_shared[local_j, local_i] = y_write[j, i]
+                yp_shared[local_j, local_i] = yp_write[j, i]
+                cuda.syncthreads()
+            
+                rand_xp_shared = cuda.shared.array(threadperblock, numba.float32)
+                rand_yp_shared = cuda.shared.array(threadperblock, numba.float32)
+                rand_delta_shared = cuda.shared.array(threadperblock, numba.float32)
 
             for _ in range(turns):
 
                 # Longitudinal Map
                 if culm:
-                   delta[j, i] = delta[j, i] - U0 / E0
-                   tau[j, i] = tau[j, i] + ac * T0 * delta[j, i]
+
+                   delta_shared[local_j, local_i] -= U0 / E0
+                   cuda.syncthreads()
+                   tau_shared[local_j, local_i] += ac * T0 * delta_shared[local_j, local_i]
+                   cuda.syncthreads()
+                   delta_write[j, i] = delta_shared[local_j, local_i]
+                   tau_write[j, i] = tau_shared[local_j, local_i]
 
                 # Transverse Map
-                # adts effects are ignored.
+                # adts effects are ignored. (Future work)
                 if cutm:
-                   phase_advance_x_s[local_j, local_i] = 2 * pi * (tune_x + chro_x * delta[j, i])
-                   phase_advance_y_s[local_j, local_i] = 2 * pi * (tune_y + chro_y * delta[j, i])
-                   cuda.syncthreads()
                    
-                #    # Horizontal
-                   matrix_00[j, i] = math.cos(phase_advance_x_s[local_j, local_i]) + alpha_x * math.sin(phase_advance_x_s[local_j, local_i])
-                   matrix_01[j, i] = beta_x * math.sin(phase_advance_x_s[local_j, local_i])
-                #    matrix_02[j, i] = dispersion_x
-                   matrix_10[j, i] = -1 * gamma_x * math.sin(phase_advance_x_s[local_j, local_i])
-                   matrix_11[j, i] = math.cos(phase_advance_x_s[local_j, local_i]) - alpha_x * math.sin(phase_advance_x_s[local_j, local_i])
-                #    matrix_12[j, i] = dispersion_xp
-                #    matrix_22[j, i] = 1
+                   x_shared_f[local_j, local_i] = ( ( math.cos(2 * pi * (tune_x + chro_x * delta_shared[local_j, local_i])) +
+                           alpha_x * math.sin(2 * pi * (tune_x + chro_x * delta_shared[local_j, local_i])) ) * x_shared[local_j, local_i] + 
+                           ( beta_x * math.sin(2 * pi * (tune_x + chro_x * delta_shared[local_j, local_i])) ) * xp_shared[local_j, local_i] +
+                           dispersion_x * delta_shared[local_j, local_i] )
 
-                #    # Vertical
-                   matrix_33[j, i] = math.cos(phase_advance_y_s[local_j, local_i]) + alpha_y * math.sin(phase_advance_y_s[local_j, local_i])
-                   matrix_34[j, i] = beta_y * math.sin(phase_advance_y_s[local_j, local_i])
-                #    matrix_35[j, i] = dispersion_y
-                   matrix_43[j, i] = -1 * gamma_y * math.sin(phase_advance_y_s[local_j, local_i])
-                   matrix_44[j, i] = math.cos(phase_advance_y_s[local_j, local_i]) - alpha_y * math.sin(phase_advance_y_s[local_j, local_i])
-                #    matrix_45[j, i] = dispersion_yp
-                #    matrix_55[j, i] = 1
-
-                   x_s[local_j, local_i] = matrix_00[j, i] * x[j, i] + matrix_01[j, i] * xp[j, i] #+ matrix_02[j, i] * delta[j, i]
-                   xp_s[local_j, local_i] = matrix_10[j, i] * x[j, i] + matrix_11[j, i] * xp[j, i] #+ matrix_12[j, i] * delta[j, i]
-                   y_s[local_j, local_i] =  matrix_33[j, i] * y[j, i] + matrix_34[j, i] * yp[j, i] #+ matrix_35[j, i] * delta[j, i]
-                   yp_s[local_j, local_i] = matrix_43[j, i] * y[j, i] + matrix_44[j, i] * yp[j, i] #+ matrix_45[j, i] * delta[j, i]
+                   xp_shared_f[local_j, local_i] = ( ( -1 * gamma_x * math.sin(2 * pi * (tune_x + chro_x * delta_shared[local_j, local_i])) ) * x_shared[local_j, local_i] +
+                           ( math.cos(2 * pi * (tune_x + chro_x * delta_shared[local_j, local_i])) -
+                           alpha_x * math.sin(2 * pi * (tune_x + chro_x * delta_shared[local_j, local_i])) ) * xp_shared[local_j, local_i] +
+                           dispersion_xp * delta_shared[local_j, local_i] )
+                   
                    cuda.syncthreads()
 
-                   x[j, i] = x_s[local_j, local_i]
-                   xp[j, i] = xp_s[local_j, local_i]
-                   y[j, i] = y_s[local_j, local_i]
-                   yp[j, i] = yp_s[local_j, local_i]
+                   x_write[j, i] = x_shared_f[local_j, local_i]
+                   xp_write[j, i] = xp_shared_f[local_j, local_i]
+
+                   x_shared[local_j, local_i] = x_shared_f[local_j, local_i]
+                   xp_shared[local_j, local_i] = xp_shared_f[local_j, local_i]
+
+                   y_shared_f[local_j, local_i] = ( ( math.cos(2 * pi * (tune_y + chro_y * delta_shared[local_j, local_i])) +
+                           alpha_y * math.sin(2 * pi * (tune_y + chro_y * delta_shared[local_j, local_i])) ) * y_shared[local_j, local_i] + 
+                           ( beta_y * math.sin(2 * pi * (tune_y + chro_y * delta_shared[local_j, local_i])) ) * yp_shared[local_j, local_i] +
+                           dispersion_y * delta_shared[local_j, local_i] )
+
+                   yp_shared_f[local_j, local_i] = ( ( -1 * gamma_y * math.sin(2 * pi * (tune_y + chro_y * delta_shared[local_j, local_i])) ) * y_shared[local_j, local_i] + 
+                           ( math.cos(2 * pi * (tune_y + chro_y * delta_shared[local_j, local_i])) -
+                           alpha_y * math.sin(2 * pi * (tune_y + chro_y * delta_shared[local_j, local_i])) ) * yp_shared[local_j, local_i] +
+                           dispersion_yp * delta_shared[local_j, local_i] )
+                   
+                   cuda.syncthreads()
+
+                   y_write[j, i] = y_shared_f[local_j, local_i]
+                   yp_write[j, i] = yp_shared_f[local_j, local_i]
+                   
+                   y_shared[local_j, local_i] = y_shared_f[local_j, local_i]
+                   yp_shared[local_j, local_i] = yp_shared_f[local_j, local_i]
+
+                   cuda.syncthreads()
 
                 # Synchrotron Radiation
                 if cusr:
-                   if j < num_particle and i < num_bunch:
-                       idx_dxpyp = i * num_particle + j
-                       if idx_dxpyp < num_p_x_b:
-                          rand_delta[j, i] = xoroshiro128p_normal_float32(rng_states_delta, idx_dxpyp)
-                          delta[j, i] = ((1 - 2*T0/tau_l)*delta[j, i] +
-                               2*sigma_delta*(T0/tau_l)**0.5*rand_delta[j, i])
-                   
-                          rand_xp[j, i] = xoroshiro128p_normal_float32(rng_states_xp, idx_dxpyp)
-                          xp[j, i] = ((1 - 2*T0/tau_h)*xp[j, i] +
-                               2*sigma_xp*(T0/tau_h)**0.5*rand_xp[j, i])
-                   
-                          rand_yp[j, i] = xoroshiro128p_normal_float32(rng_states_yp, idx_dxpyp)
-                          yp[j, i] = ((1 - 2*T0/tau_v)*yp[j, i] +
-                               2*sigma_yp*(T0/tau_v)**0.5*rand_yp[j, i])
+                     
+                     #rand_xp
+                     if j < num_particle and i < num_bunch:
+                          rand_xp[j, i] = xoroshiro128p_normal_float32(rng_states, j + num_particle * i)
+                     rand_xp_shared[local_j, local_i] = rand_xp[j, i]
+                     cuda.syncthreads()
+                     xp_shared[local_j, local_i] = ( (1 - 2*T0/tau_h) * xp_shared[local_j, local_i] +
+                               2*sigma_xp*(T0/tau_h)**0.5 * rand_xp_shared[local_j, local_i] )
+
+                     #rand_yp
+                     if j < num_particle and i < num_bunch:
+                          rand_yp[j, i] = xoroshiro128p_normal_float32(rng_states, j + num_particle * i)
+                     rand_yp_shared[local_j, local_i] = rand_yp[j, i]
+                     cuda.syncthreads()
+                     yp_shared[local_j, local_i] = ( (1 - 2*T0/tau_v) * yp_shared[local_j, local_i] +
+                               2*sigma_yp*(T0/tau_v)**0.5 * rand_yp_shared[local_j, local_i] )
                           
+                     #rand_delta
+                     if j < num_particle and i < num_bunch:
+                          rand_delta[j, i] = xoroshiro128p_normal_float32(rng_states, j + num_particle * i)
+                     rand_delta_shared[local_j, local_i] = rand_delta[j, i]
+                     cuda.syncthreads()
+                     delta_shared[local_j, local_i] = ( (1 - 2*T0/tau_l) * delta_shared[local_j, local_i] +
+                               2*sigma_delta*(T0/tau_l)**0.5 * rand_delta_shared[local_j, local_i] )
+                          
+                     cuda.syncthreads()
+
+                     xp_write[j, i] = xp_shared[local_j, local_i]
+                     yp_write[j, i] = yp_shared[local_j, local_i]
+                     delta_write[j, i] = delta_shared[local_j, local_i]
+
                 # RF Cavity
                 if curfc:
-                   delta[j, i] = delta[j, i] + Vc / E0 * math.cos(
-                        m * omega1 * tau[j, i] + theta )
+                   delta_shared[local_j, local_i] += Vc / E0 * math.cos(
+                        m * omega1 * tau_shared[local_j, local_i] + theta )
+                   cuda.syncthreads()
+                   delta_write[j, i] = delta_shared[local_j, local_i]
 
-                if (culm == False) and (cutm == False) and (cusr == False) and (curfc == False):
-                   track_error[0] = 1
 
         if isinstance(bunch, Beam):
             beam = bunch
             num_bunch = beam.__len__()
             num_particle = beam[0].mp_number
-            x = np.zeros((num_particle, num_bunch), dtype='f')
-            xp = np.zeros((num_particle, num_bunch), dtype='f')
-            y = np.zeros((num_particle, num_bunch), dtype='f')
-            yp = np.zeros((num_particle, num_bunch), dtype='f')
-            tau = np.zeros((num_particle, num_bunch), dtype='f')
-            delta = np.zeros((num_particle, num_bunch), dtype='f')
-            rand_delta = np.zeros((num_particle, num_bunch), dtype='f')
+            x_read = np.zeros((num_particle, num_bunch), dtype='f')
+            xp_read = np.zeros((num_particle, num_bunch), dtype='f')
+            y_read = np.zeros((num_particle, num_bunch), dtype='f')
+            yp_read = np.zeros((num_particle, num_bunch), dtype='f')
+            tau_read = np.zeros((num_particle, num_bunch), dtype='f')
+            delta_read = np.zeros((num_particle, num_bunch), dtype='f')
+
+            x_write = np.zeros((num_particle, num_bunch), dtype='f')
+            xp_write = np.zeros((num_particle, num_bunch), dtype='f')
+            y_write = np.zeros((num_particle, num_bunch), dtype='f')
+            yp_write = np.zeros((num_particle, num_bunch), dtype='f')
+            tau_write = np.zeros((num_particle, num_bunch), dtype='f')
+            delta_write = np.zeros((num_particle, num_bunch), dtype='f')
+
             rand_xp = np.zeros((num_particle, num_bunch), dtype='f')
             rand_yp = np.zeros((num_particle, num_bunch), dtype='f')
-            phase_advance_x_s = np.zeros((num_particle, num_bunch), dtype='f')
-            phase_advance_y_s = np.zeros((num_particle, num_bunch), dtype='f')
-
-            matrix_00 = np.zeros((num_particle, num_bunch), dtype='f')
-            matrix_01 = np.zeros((num_particle, num_bunch), dtype='f')
-            # matrix_02 = np.zeros((num_particle, num_bunch), dtype='f')
-            matrix_10 = np.zeros((num_particle, num_bunch), dtype='f')
-            matrix_11 = np.zeros((num_particle, num_bunch), dtype='f')
-            # matrix_12 = np.zeros((num_particle, num_bunch), dtype='f')
-            # matrix_22 = np.zeros((num_particle, num_bunch), dtype='f')
-            matrix_33 = np.zeros((num_particle, num_bunch), dtype='f')
-            matrix_34 = np.zeros((num_particle, num_bunch), dtype='f')
-            # matrix_35 = np.zeros((num_particle, num_bunch), dtype='f')
-            matrix_43 = np.zeros((num_particle, num_bunch), dtype='f')
-            matrix_44 = np.zeros((num_particle, num_bunch), dtype='f')
-            # matrix_45 = np.zeros((num_particle, num_bunch), dtype='f')
-            # matrix_55 = np.zeros((num_particle, num_bunch), dtype='f')
+            rand_delta = np.zeros((num_particle, num_bunch), dtype='f')
 
             sigma_xp = self.ring.sigma()[1]
             sigma_yp = self.ring.sigma()[3]
@@ -468,68 +465,51 @@ class CUDAMap(Element):
             beta_y = self.beta[1]
             gamma_x = self.gamma[0]
             gamma_y = self.gamma[1]
-            # dispersion_x = self.dispersion[0]
-            # dispersion_xp = self.dispersion[1]
-            # dispersion_y = self.dispersion[2]
-            # dispersion_yp = self.dispersion[3]
+            dispersion_x = self.dispersion[0]
+            dispersion_xp = self.dispersion[1]
+            dispersion_y = self.dispersion[2]
+            dispersion_yp = self.dispersion[3]
 
-            pi = math.pi
+            pi = np.pi
 
             track_error = np.zeros(1, dtype='f')
 
             for bunch_index, bunch_ref in enumerate(beam):
-                x[:, bunch_index] = bunch_ref['x']
-                xp[:, bunch_index] = bunch_ref['xp']
-                y[:, bunch_index] = bunch_ref['y']
-                yp[:, bunch_index] = bunch_ref['yp']
-                tau[:, bunch_index] = bunch_ref['tau']
-                delta[:, bunch_index] = bunch_ref['delta']
+                x_read[:, bunch_index] = bunch_ref['x']
+                xp_read[:, bunch_index] = bunch_ref['xp']
+                y_read[:, bunch_index] = bunch_ref['y']
+                yp_read[:, bunch_index] = bunch_ref['yp']
+                tau_read[:, bunch_index] = bunch_ref['tau']
+                delta_read[:, bunch_index] = bunch_ref['delta']
             
-            threadperblock_x = 8 
-            threadperblock_y = 8 
+            threadperblock_x = 16
+            threadperblock_y = 16
             threadperblock = (threadperblock_x, threadperblock_y) 
             blockpergrid = (num_bunch // threadperblock_x + 1, num_particle // threadperblock_y + 1)
 
-            num_p_x_b = num_particle * num_bunch
-
-            rng_states_delta = create_xoroshiro128p_states(num_p_x_b, seed=1) #seed=time.time()
-            rng_states_xp = create_xoroshiro128p_states(num_p_x_b, seed=1)
-            rng_states_yp = create_xoroshiro128p_states(num_p_x_b, seed=1)
+            rng_states = create_xoroshiro128p_states(num_particle*num_bunch, seed=1) #seed=time.time()
 
             # Calculation in GPU 
-            track_kernel[blockpergrid, threadperblock](x, xp, y, yp, tau, delta, rand_delta, rand_xp, rand_yp, num_particle, num_bunch, num_p_x_b,
-                                                       self.ring.U0, self.ring.E0, self.ring.ac, self.ring.T0, self.ring.sigma_delta, self.ring.omega1,
-                                                       sigma_xp, sigma_yp, tau_h, tau_v, tau_l, rng_states_delta, rng_states_xp, rng_states_yp, self.m,
-                                                       self.Vc, self.theta, phase_advance_x_s, phase_advance_y_s, tune_x, tune_y, chro_x, chro_y, pi,
-                                                       matrix_00, matrix_01, matrix_10, matrix_11, matrix_33, matrix_34,
-                                                       matrix_43, matrix_44, alpha_x, alpha_y, beta_x, beta_y, gamma_x,
+
+            track_kernel[blockpergrid, threadperblock](x_read, xp_read, y_read, yp_read, tau_read, delta_read, rand_xp, rand_yp, rand_delta,
+                                                       x_write, xp_write, y_write, yp_write, tau_write, delta_write, num_particle, num_bunch,
+                                                       self.ring.U0, self.ring.E0, self.ring.ac,
+                                                       self.ring.T0, self.ring.sigma_delta, self.ring.omega1, sigma_xp, sigma_yp,
+                                                       tau_h, tau_v, tau_l, rng_states, dispersion_x, dispersion_xp, dispersion_y,
+                                                       dispersion_yp, self.m, self.Vc, self.theta, tune_x, tune_y, chro_x, chro_y, pi,
+                                                       alpha_x, alpha_y, beta_x, beta_y, gamma_x,
                                                        gamma_y, turns, track_error, culm, cutm, cusr, curfc)
 
             if track_error[0] == 1:
                 raise ValueError("There is nothing to track.")
 
             for bunch_index, bunch_ref in enumerate(beam):
-                bunch_ref['x'] = x[:, bunch_index]
-                bunch_ref['xp'] = xp[:, bunch_index]
-                bunch_ref['y'] = y[:, bunch_index]
-                bunch_ref['yp'] = yp[:, bunch_index]
-                bunch_ref['tau'] = tau[:, bunch_index]
-                bunch_ref['delta'] = delta[:, bunch_index]
-
-            # matrix[0, 0, :, :] = matrix_cuda[0, :, :]
-            # matrix[0, 1, :, :] = matrix_cuda[1, :, :]
-            # matrix[0, 2, :, :] = matrix_cuda[2, :, :]
-            # matrix[1, 0, :, :] = matrix_cuda[3, :, :]
-            # matrix[1, 1, :, :] = matrix_cuda[4, :, :]
-            # matrix[1, 2, :, :] = matrix_cuda[5, :, :]
-            # matrix[2, 2, :, :] = matrix_cuda[6, :, :]
-            # matrix[3, 3, :, :] = matrix_cuda[7, :, :]
-            # matrix[3, 4, :, :] = matrix_cuda[8, :, :]
-            # matrix[3, 5, :, :] = matrix_cuda[9, :, :]
-            # matrix[4, 3, :, :] = matrix_cuda[10, :, :]
-            # matrix[4, 4, :, :] = matrix_cuda[11, :, :]
-            # matrix[4, 5, :, :] = matrix_cuda[12, :, :]
-            # matrix[5, 5, :, :] = matrix_cuda[13, :, :]
+                bunch_ref['x'] = x_write[:, bunch_index]
+                bunch_ref['xp'] = xp_write[:, bunch_index]
+                bunch_ref['y'] = y_write[:, bunch_index]
+                bunch_ref['yp'] = yp_write[:, bunch_index]
+                bunch_ref['tau'] = tau_write[:, bunch_index]
+                bunch_ref['delta'] = delta_write[:, bunch_index]
 
         else:
             raise ValueError("To perform GPU calculations, CUDA_PARALLEL must be enabled in the mybeam.init_beam.")

@@ -33,7 +33,7 @@ np.random.seed(1)
 
 MPI_PARALLEL = False 
 
-MONITORING = False 
+MONITORING = False
 MPI_MONITORING = False
 OUTPUT_FOLDER = "parallel_test"
 OUTPUT_FILENAME = "tracking_cpu"
@@ -53,8 +53,8 @@ sigma_delta = 1.2e-3 # Equilibrium energy spread.
 chro = [-115.1, -77.9] # Horizontal and vertical (non-normalized) chromaticities.
 
 local_beta = np.array([8.42, 3.28]) # Beta function at the tracking location.
-local_alpha = np.array([0, 0]) # Alpha function at the tracking location.
-local_dispersion = np.array([0, 0, 0, 0]) # Dispersion function and its derivative at the tracking location.
+local_alpha = np.array([0.0, 0.0]) # Alpha function at the tracking location.
+local_dispersion = np.array([0.0, 0.0, 0.0, 0.0]) # Dispersion function and its derivative at the tracking location.
 
 optics = Optics(local_beta=local_beta, local_alpha=local_alpha, 
                   local_dispersion=local_dispersion)
@@ -99,7 +99,7 @@ if MONITORING is True:
     beammonitor = BeamMonitor(h=ring.h, total_size=turns, save_every=1, buffer_size=10, mpi_mode=MPI_MONITORING, file_name=f'{OUTPUT_FILENAME if MPI_PARALLEL else OUTPUT_PATH}')
 else:
     print('Beam monitor is disabled.')
-
+# print(mybeam.bunch_list[0])
 # Run simulation
 for i in tqdm(range(turns), desc=f'Core #{mybeam.mpi.bunch_num if MPI_PARALLEL is True else 0} Processing'):
 
@@ -120,7 +120,11 @@ for i in tqdm(range(turns), desc=f'Core #{mybeam.mpi.bunch_num if MPI_PARALLEL i
 if MONITORING is True:
     beammonitor.close()
 
-#print(mybeam.bunch_mean[4, h-1])
+# print(mybeam.bunch_mean[4, h-1])
 print(mybeam.bunch_list[0])
-print(mybeam.bunch_list[h-1])
+# f = open("fcpu1.txt", 'w')
+# f.write(str(a))
+
+# f.close
+# print(mybeam.bunch_list[h-1])
 print("All tracking has been done.")

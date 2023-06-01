@@ -51,8 +51,8 @@ sigma_delta = 1.2e-3 # Equilibrium energy spread.
 chro = [-115.1, -77.9] # Horizontal and vertical (non-normalized) chromaticities.
 
 local_beta = np.array([8.42, 3.28]) # Beta function at the tracking location.
-local_alpha = np.array([0, 0]) # Alpha function at the tracking location.
-local_dispersion = np.array([0, 0, 0, 0]) # Dispersion function and its derivative at the tracking location.
+local_alpha = np.array([0.0, 0.0]) # Alpha function at the tracking location.
+local_dispersion = np.array([0.0, 0.0, 0.0, 0.0]) # Dispersion function and its derivative at the tracking location.
 
 optics = Optics(local_beta=local_beta, local_alpha=local_alpha, 
                   local_dispersion=local_dispersion)
@@ -64,7 +64,7 @@ ring = Synchrotron(h=h, optics=optics, particle=particle, L=L, E0=E0, ac=ac,
 mp_number = 4e4
 Vc = 3.5e6
 
-turns = 30000
+turns = 100
 
 # Geometry and beam
 long = LongitudinalMap(ring)
@@ -105,19 +105,10 @@ else:
 print('Turns: ' + str(turns))
 # culm: longitudinal map, cutm: transverse map, cusr: synchrotron radiation,
 # curfc: RF Cavity, curw: resistive wall
-
+# print(mybeam.bunch_list[0])
 for i in tqdm(range(1), desc='GPU Processing'):
 
-    cumap.track(mybeam, turns, culm=True, cutm=True, cusr=True, curfc=True)
-    # long.track(mybeam)
-    # long.track(mybeam, turns)
-# --------------------------------------- Need to change into cuda codes from here --------------------------------------
-    # trans.track(mybeam)
-    # sr.track(mybeam)
-    # MC.track(mybeam)
-    
-    # Add the collective effects
-    # wake.track(mybeam)
+    cumap.track(mybeam, turns, culm=False, cutm=False, cusr=True, curfc=False)
 
     # Monitor
     if MONITORING is True:
@@ -126,7 +117,7 @@ for i in tqdm(range(1), desc='GPU Processing'):
 if MONITORING is True:
     beammonitor.close()
 
-#print(mybeam.bunch_mean[4, h-1])
+# print(mybeam.bunch_mean[4, h-1])
 print(mybeam.bunch_list[0])
-print(mybeam.bunch_list[h-1])
+# print(mybeam.bunch_list[h-1])
 print("All tracking has been done.")
