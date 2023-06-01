@@ -108,7 +108,7 @@ print('Turns: ' + str(turns))
 # print(mybeam.bunch_list[0])
 for i in tqdm(range(1), desc='GPU Processing'):
 
-    cumap.track(mybeam, turns, culm=False, cutm=False, cusr=True, curfc=False)
+    cumap.track(mybeam, turns, culm=True, cutm=True, cusr=True, curfc=True)
 
     # Monitor
     if MONITORING is True:
