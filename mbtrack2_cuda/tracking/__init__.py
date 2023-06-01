@@ -12,7 +12,8 @@ from mbtrack2_cuda.tracking.element import (Element,
                                        LongitudinalMap, 
                                        TransverseMap, 
                                        SynchrotronRadiation,
-                                       SkewQuadrupole)
+                                       SkewQuadrupole,
+                                       CUDAMap)
 from mbtrack2_cuda.tracking.aperture import (CircularAperture, 
                                         ElipticalAperture,
                                         RectangularAperture, 
