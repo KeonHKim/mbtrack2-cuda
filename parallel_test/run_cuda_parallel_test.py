@@ -109,6 +109,10 @@ print('Turns: ' + str(turns))
 for i in tqdm(range(1), desc='GPU Processing'):
 
     cumap.track(mybeam, turns, culm=True, cutm=True, cusr=True, curfc=True)
+=======
+for i in tqdm(range(1), desc='GPU Processing'):
+
+    long.track(mybeam, turns)
 
     # Monitor
     if MONITORING is True:
