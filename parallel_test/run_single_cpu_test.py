@@ -63,10 +63,10 @@ ring = Synchrotron(h=h, optics=optics, particle=particle, L=L, E0=E0, ac=ac,
                    U0=U0, tau=tau, emit=emit, tune=tune, 
                    sigma_delta=sigma_delta, sigma_0=sigma_0, chro=chro)
 
-mp_number = 4e4
+mp_number = 1e4
 Vc = 3.5e6
 
-turns = 100
+turns = 1e4
 
 # Geometry and beam
 long = LongitudinalMap(ring)
@@ -105,13 +105,11 @@ for i in tqdm(range(turns), desc=f'Core #{mybeam.mpi.bunch_num if MPI_PARALLEL i
 
     long.track(mybeam)
     trans.track(mybeam)
-    sr.track(mybeam)
+    # sr.track(mybeam)
     MC.track(mybeam)
     
     # Add the collective effects
     # wake.track(mybeam)
-
-    # print(mybeam.bunch_mean[4, h-1])
 
     # Monitor
     if MONITORING is True:
@@ -122,9 +120,11 @@ if MONITORING is True:
 
 # print(mybeam.bunch_mean[4, h-1])
 print(mybeam.bunch_list[0])
-# f = open("fcpu1.txt", 'w')
-# f.write(str(a))
-
-# f.close
-# print(mybeam.bunch_list[h-1])
+print(mybeam.bunch_list[h-1])
+print('cpu_beam_emitX (zeroth bunch): ' + str(mybeam.bunch_emit[0, 0]))
+print('cpu_beam_emitX (last bunch): ' + str(mybeam.bunch_emit[0, h-1]))
+print('cpu_beam_emitY (zeroth bunch): ' + str(mybeam.bunch_emit[1, 0]))
+print('cpu_beam_emitY (last bunch): ' + str(mybeam.bunch_emit[1, h-1]))
+print('cpu_beam_emitS (zeroth bunch): ' + str(mybeam.bunch_emit[2, 0]))
+print('cpu_beam_emitS (last bunch): ' + str(mybeam.bunch_emit[2, h-1]))
 print("All tracking has been done.")
