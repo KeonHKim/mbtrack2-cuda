@@ -61,10 +61,10 @@ ring = Synchrotron(h=h, optics=optics, particle=particle, L=L, E0=E0, ac=ac,
                    U0=U0, tau=tau, emit=emit, tune=tune, 
                    sigma_delta=sigma_delta, sigma_0=sigma_0, chro=chro)
 
-mp_number = 4e4
+mp_number = 1e4 #10240
 Vc = 3.5e6
 
-turns = 100
+turns = 1e4
 
 # Geometry and beam
 long = LongitudinalMap(ring)
@@ -104,15 +104,11 @@ else:
 # Run simulation
 print('Turns: ' + str(turns))
 # culm: longitudinal map, cutm: transverse map, cusr: synchrotron radiation,
-# curfc: RF Cavity, curw: resistive wall
+# curfc: RF Cavity, curw: resistive wall, cubm: beam monitor
 # print(mybeam.bunch_list[0])
 for i in tqdm(range(1), desc='GPU Processing'):
 
-    cumap.track(mybeam, turns, culm=True, cutm=True, cusr=True, curfc=True)
-=======
-for i in tqdm(range(1), desc='GPU Processing'):
-
-    long.track(mybeam, turns)
+    cumap.track(mybeam, turns, culm=True, cutm=True, cusr=False, curfc=True, cubm=True)
 
     # Monitor
     if MONITORING is True:
@@ -123,5 +119,12 @@ if MONITORING is True:
 
 # print(mybeam.bunch_mean[4, h-1])
 print(mybeam.bunch_list[0])
-# print(mybeam.bunch_list[h-1])
+print(mybeam.bunch_list[h-1])
+print('cpu_beam_emitX (zeroth bunch): ' + str(mybeam.bunch_emit[0, 0]))
+print('cpu_beam_emitX (last bunch): ' + str(mybeam.bunch_emit[0, h-1]))
+print('cpu_beam_emitY (zeroth bunch): ' + str(mybeam.bunch_emit[1, 0]))
+print('cpu_beam_emitY (last bunch): ' + str(mybeam.bunch_emit[1, h-1]))
+print('cpu_beam_emitS (zeroth bunch): ' + str(mybeam.bunch_emit[2, 0]))
+print('cpu_beam_emitS (last bunch): ' + str(mybeam.bunch_emit[2, h-1]))
+# print(mybeam.bunch_particle)
 print("All tracking has been done.")

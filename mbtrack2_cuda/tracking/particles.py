@@ -421,7 +421,7 @@ class Beam:
         Mean position of alive particles for each bunch
     bunch_std : array of shape (6, ring.h)
         Standard deviation of the position of alive particles for each bunch        
-    bunch_emit : array of shape (6, ring.h)
+    bunch_emit : array of shape (3, ring.h)
         Bunch emittance of alive particles for each bunch
     mpi : Mpi object
     mpi_switch : bool

@@ -233,7 +233,7 @@ def rwmbi_growth_rate(ring, current, beff, rho_material, plane='x'):
     E0 = ring.E0
     R = ring.L/(2*np.pi)
     frac_tune, int_tune = math.modf(ring.tune[index])
-    Z0 = 377.7 # Vacuum impedance [Ohm]
+    Z0 = 376.7 # Vacuum impedance [Ohm]
     
     gr = (beta0*omega0*current*R) /(4*np.pi*E0*beff**3) * ((2*c*Z0*rho_material) / ((1-frac_tune)*omega0))**0.5
     
@@ -268,7 +268,7 @@ def rwmbi_threshold(ring, beff, rho_material, plane='x'):
     E0 = ring.E0
     tau_rad = ring.tau[index]
     frac_tune, int_tune = math.modf(ring.tune[index])
-    Z0 = 377.7 # Vacuum impedance [Ohm]
+    Z0 = 376.7 # Vacuum impedance [Ohm]
     
     Ith = (4*np.pi*E0*beff**3) / (c*beta0*tau_rad) * (((1-frac_tune)*omega0) / (2*c*Z0*rho_material))**0.5
     
