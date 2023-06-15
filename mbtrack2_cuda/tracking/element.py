@@ -284,19 +284,16 @@ class CUDAMap(Element):
         """
         @cuda.jit
         def track_kernel(x_read, xp_read, y_read, yp_read, tau_read, delta_read,
-                         x_write, xp_write, y_write, yp_write, tau_write, delta_write, num_particle, num_bunch,
-                         U0, E0, ac, T0, sigma_delta, omega1, sigma_xp, sigma_yp,
+                         num_particle, num_bunch, U0, E0, ac, T0, sigma_delta, omega1, sigma_xp, sigma_yp,
                          tau_h, tau_v, tau_l, rng_states, dispersion_x, dispersion_xp, dispersion_y, dispersion_yp,
                          m, Vc, theta, tune_x, tune_y, chro_x, chro_y,
                          pi, alpha_x, alpha_y, beta_x, beta_y, gamma_x, gamma_y,
-                         sum_x_squared, sum_xp_squared, sum_x_xp, sum_y_squared, sum_yp_squared, sum_y_yp,
-                         sum_tau_squared, sum_delta_squared, sum_tau_delta,
                          turns_sum_x_squared, turns_sum_xp_squared, turns_sum_x_xp, turns_sum_y_squared,
                          turns_sum_yp_squared, turns_sum_y_yp, turns_sum_tau_squared, turns_sum_delta_squared,
-                         turns_sum_tau_delta, turns, track_error, culm, cutm, cusr, curfc, cubm):
+                         turns_sum_tau_delta, turns, track_error, culm, cutm, cusr, curfc, cubm,
+                         x_write, xp_write, y_write, yp_write, tau_write, delta_write):
             
             i, j = cuda.grid(2)
-            # g = cuda.cg.this_grid()
 
             local_i = cuda.threadIdx.x
             local_j = cuda.threadIdx.y
@@ -317,16 +314,6 @@ class CUDAMap(Element):
             xp_shared_f = cuda.shared.array(threadperblock, numba.float32)
             y_shared_f = cuda.shared.array(threadperblock, numba.float32)
             yp_shared_f = cuda.shared.array(threadperblock, numba.float32)
-
-            # x_squared_shared = cuda.shared.array(threadperblock, numba.float32)
-            # xp_squared_shared = cuda.shared.array(threadperblock, numba.float32)
-            # x_xp_shared = cuda.shared.array(threadperblock, numba.float32)
-            # y_squared_shared = cuda.shared.array(threadperblock, numba.float32)
-            # yp_squared_shared = cuda.shared.array(threadperblock, numba.float32)
-            # y_yp_shared = cuda.shared.array(threadperblock, numba.float32)
-            # tau_squared_shared = cuda.shared.array(threadperblock, numba.float32)
-            # delta_squared_shared = cuda.shared.array(threadperblock, numba.float32)
-            # tau_delta_shared = cuda.shared.array(threadperblock, numba.float32)
 
             sum_x_squared_shared = cuda.shared.array(threadperblock, numba.float32)
             sum_xp_squared_shared = cuda.shared.array(threadperblock, numba.float32)
@@ -358,6 +345,7 @@ class CUDAMap(Element):
                    cuda.syncthreads()
                    tau_shared[local_j, local_i] += ac * T0 * delta_shared[local_j, local_i]
                    cuda.syncthreads()
+
                    delta_write[j, i] = delta_shared[local_j, local_i]
                    tau_write[j, i] = tau_shared[local_j, local_i]
 
@@ -437,6 +425,7 @@ class CUDAMap(Element):
                    delta_shared[local_j, local_i] += Vc / E0 * math.cos(
                         m * omega1 * tau_shared[local_j, local_i] + theta )
                    cuda.syncthreads()
+
                    delta_write[j, i] = delta_shared[local_j, local_i]
 
                 # Beam Monitor
@@ -467,39 +456,16 @@ class CUDAMap(Element):
                      cuda.syncthreads()
                      s = s // 2
                 
-                #    if local_j == 0 and i < num_bunch:
-                #         cuda.atomic.add(sum_x_squared, (cuda.blockIdx.y, i), sum_x_squared_shared[0, local_i])
-                #         cuda.atomic.add(sum_xp_squared, (cuda.blockIdx.y, i), sum_xp_squared_shared[0, local_i])
-                #         cuda.atomic.add(sum_x_xp, (cuda.blockIdx.y, i), sum_x_xp_shared[0, local_i])
-                #         cuda.atomic.add(sum_y_squared, (cuda.blockIdx.y, i), sum_y_squared_shared[0, local_i])
-                #         cuda.atomic.add(sum_yp_squared, (cuda.blockIdx.y, i), sum_yp_squared_shared[0, local_i])
-                #         cuda.atomic.add(sum_y_yp, (cuda.blockIdx.y, i), sum_y_yp_shared[0, local_i])
-                #         cuda.atomic.add(sum_tau_squared, (cuda.blockIdx.y, i), sum_tau_squared_shared[0, local_i])
-                #         cuda.atomic.add(sum_delta_squared, (cuda.blockIdx.y, i), sum_delta_squared_shared[0, local_i])
-                #         cuda.atomic.add(sum_tau_delta, (cuda.blockIdx.y, i), sum_tau_delta_shared[0, local_i])
-                
                    if local_j == 0 and i < num_bunch:
-                        sum_x_squared[cuda.blockIdx.y, i] = sum_x_squared_shared[0, local_i]
-                        sum_xp_squared[cuda.blockIdx.y, i] = sum_xp_squared_shared[0, local_i]
-                        sum_x_xp[cuda.blockIdx.y, i] = sum_x_xp_shared[0, local_i]
-                        sum_y_squared[cuda.blockIdx.y, i] = sum_y_squared_shared[0, local_i]
-                        sum_yp_squared[cuda.blockIdx.y, i] = sum_yp_squared_shared[0, local_i]
-                        sum_y_yp[cuda.blockIdx.y, i] = sum_y_yp_shared[0, local_i]
-                        sum_tau_squared[cuda.blockIdx.y, i] = sum_tau_squared_shared[0, local_i]
-                        sum_delta_squared[cuda.blockIdx.y, i] = sum_delta_squared_shared[0, local_i]
-                        sum_tau_delta[cuda.blockIdx.y, i] = sum_tau_delta_shared[0, local_i]
-
-                #    for y in range(1, blockpergrid[1]):
-                #        if j == 0 and i < num_bunch:
-                #         cuda.atomic.add(sum_x_squared, (y, i), sum_x_squared[y-1, i])
-                #         cuda.atomic.add(sum_xp_squared, (y, i), sum_xp_squared[y-1, i])
-                #         cuda.atomic.add(sum_x_xp, (y, i), sum_x_xp[y-1, i])
-                #         cuda.atomic.add(sum_y_squared, (y, i), sum_y_squared[y-1, i])
-                #         cuda.atomic.add(sum_yp_squared, (y, i), sum_yp_squared[y-1, i])
-                #         cuda.atomic.add(sum_y_yp, (y, i), sum_y_yp[y-1, i])
-                #         cuda.atomic.add(sum_tau_squared, (y, i), sum_tau_squared[y-1, i])
-                #         cuda.atomic.add(sum_delta_squared, (y, i), sum_delta_squared[y-1, i])
-                #         cuda.atomic.add(sum_tau_delta, (y, i), sum_tau_delta[y-1, i])
+                        turns_sum_x_squared[cuda.blockIdx.y, i, k] = sum_x_squared_shared[0, local_i]
+                        turns_sum_xp_squared[cuda.blockIdx.y, i, k] = sum_xp_squared_shared[0, local_i]
+                        turns_sum_x_xp[cuda.blockIdx.y, i, k] = sum_x_xp_shared[0, local_i]
+                        turns_sum_y_squared[cuda.blockIdx.y, i, k] = sum_y_squared_shared[0, local_i]
+                        turns_sum_yp_squared[cuda.blockIdx.y, i, k] = sum_yp_squared_shared[0, local_i]
+                        turns_sum_y_yp[cuda.blockIdx.y, i, k] = sum_y_yp_shared[0, local_i]
+                        turns_sum_tau_squared[cuda.blockIdx.y, i, k] = sum_tau_squared_shared[0, local_i]
+                        turns_sum_delta_squared[cuda.blockIdx.y, i, k] = sum_delta_squared_shared[0, local_i]
+                        turns_sum_tau_delta[cuda.blockIdx.y, i, k] = sum_tau_delta_shared[0, local_i]
 
         if isinstance(bunch, Beam):
             beam = bunch
@@ -511,7 +477,8 @@ class CUDAMap(Element):
             yp_read = np.zeros((num_particle, num_bunch), dtype='f')
             tau_read = np.zeros((num_particle, num_bunch), dtype='f')
             delta_read = np.zeros((num_particle, num_bunch), dtype='f')
-
+            
+            #If you want to get the final values of 6D phase space coordinates
             x_write = np.zeros((num_particle, num_bunch), dtype='f')
             xp_write = np.zeros((num_particle, num_bunch), dtype='f')
             y_write = np.zeros((num_particle, num_bunch), dtype='f')
@@ -519,25 +486,13 @@ class CUDAMap(Element):
             tau_write = np.zeros((num_particle, num_bunch), dtype='f')
             delta_write = np.zeros((num_particle, num_bunch), dtype='f')
 
-            sum_x_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            sum_xp_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            sum_x_xp = np.zeros((num_particle, num_bunch), dtype='f')
-            sum_y_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            sum_yp_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            sum_y_yp = np.zeros((num_particle, num_bunch), dtype='f')
-            sum_tau_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            sum_delta_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            sum_tau_delta = np.zeros((num_particle, num_bunch), dtype='f')
-
-            turns_sum_x_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            turns_sum_xp_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            turns_sum_x_xp = np.zeros((num_particle, num_bunch), dtype='f')
-            turns_sum_y_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            turns_sum_yp_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            turns_sum_y_yp = np.zeros((num_particle, num_bunch), dtype='f')
-            turns_sum_tau_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            turns_sum_delta_squared = np.zeros((num_particle, num_bunch), dtype='f')
-            turns_sum_tau_delta = np.zeros((num_particle, num_bunch), dtype='f')
+            #If you don't want to get the final values of 6D phase space coordinates
+            # x_write = 0.0
+            # xp_write = 0.0
+            # y_write = 0.0
+            # yp_write = 0.0
+            # tau_write = 0.0
+            # delta_write = 0.0
 
             sigma_xp = self.ring.sigma()[1]
             sigma_yp = self.ring.sigma()[3]
@@ -576,25 +531,34 @@ class CUDAMap(Element):
             threadperblock = (threadperblock_x, threadperblock_y)
             blockpergrid = (num_bunch // threadperblock_x + 1, num_particle // threadperblock_y + 1)
 
-            rng_states = create_xoroshiro128p_states(num_particle*num_bunch, seed=1) #seed=time.time()
+            rng_states = create_xoroshiro128p_states(num_particle*num_bunch, seed=time.time())
+
+            turns_sum_x_squared = np.zeros((blockpergrid[1], num_bunch, turns), dtype='f')
+            turns_sum_xp_squared = np.zeros((blockpergrid[1], num_bunch, turns), dtype='f')
+            turns_sum_x_xp = np.zeros((blockpergrid[1], num_bunch, turns), dtype='f')
+            turns_sum_y_squared = np.zeros((blockpergrid[1], num_bunch, turns), dtype='f')
+            turns_sum_yp_squared = np.zeros((blockpergrid[1], num_bunch, turns), dtype='f')
+            turns_sum_y_yp = np.zeros((blockpergrid[1], num_bunch, turns), dtype='f')
+            turns_sum_tau_squared = np.zeros((blockpergrid[1], num_bunch, turns), dtype='f')
+            turns_sum_delta_squared = np.zeros((blockpergrid[1], num_bunch, turns), dtype='f')
+            turns_sum_tau_delta = np.zeros((blockpergrid[1], num_bunch, turns), dtype='f')
 
             # Calculation in GPU 
 
-            track_kernel[blockpergrid, threadperblock](x_read, xp_read, y_read, yp_read, tau_read, delta_read,
-                                                       x_write, xp_write, y_write, yp_write, tau_write, delta_write, num_particle, num_bunch,
+            track_kernel[blockpergrid, threadperblock](x_read, xp_read, y_read, yp_read, tau_read, delta_read, num_particle, num_bunch,
                                                        self.ring.U0, self.ring.E0, self.ring.ac, self.ring.T0, self.ring.sigma_delta, self.ring.omega1,
                                                        sigma_xp, sigma_yp, tau_h, tau_v, tau_l, rng_states, dispersion_x, dispersion_xp, dispersion_y,
                                                        dispersion_yp, self.m, self.Vc, self.theta, tune_x, tune_y, chro_x, chro_y, pi,
                                                        alpha_x, alpha_y, beta_x, beta_y, gamma_x, gamma_y,
-                                                       sum_x_squared, sum_xp_squared, sum_x_xp, sum_y_squared, sum_yp_squared, sum_y_yp,
-                                                       sum_tau_squared, sum_delta_squared, sum_tau_delta,
                                                        turns_sum_x_squared, turns_sum_xp_squared, turns_sum_x_xp, turns_sum_y_squared,
                                                        turns_sum_yp_squared, turns_sum_y_yp, turns_sum_tau_squared, turns_sum_delta_squared,
-                                                       turns_sum_tau_delta, turns, track_error, culm, cutm, cusr, curfc, cubm)
+                                                       turns_sum_tau_delta, turns, track_error, culm, cutm, cusr, curfc, cubm,
+                                                       x_write, xp_write, y_write, yp_write, tau_write, delta_write)
 
             if track_error[0] == 1:
                 raise ValueError("There is nothing to track.")
-
+            
+            #If you want to get the final values of 6D phase space coordinates
             for bunch_index, bunch_ref in enumerate(beam):
                 bunch_ref['x'] = x_write[:, bunch_index]
                 bunch_ref['xp'] = xp_write[:, bunch_index]
@@ -603,27 +567,23 @@ class CUDAMap(Element):
                 bunch_ref['tau'] = tau_write[:, bunch_index]
                 bunch_ref['delta'] = delta_write[:, bunch_index]
 
-            beam_emitX = ( (sum_x_squared.sum(axis=0)*sum_xp_squared.sum(axis=0) - sum_x_xp.sum(axis=0)**2)/(num_particle**2) )**(0.5)
-            beam_emitY = ( (sum_y_squared.sum(axis=0)*sum_yp_squared.sum(axis=0) - sum_y_yp.sum(axis=0)**2)/num_particle**2 )**(0.5)
-            beam_emitS = ( (sum_tau_squared.sum(axis=0)*sum_delta_squared.sum(axis=0) - sum_tau_delta.sum(axis=0)**2)/num_particle**2 )**(0.5)
+            turns_beam_emitX = ( (turns_sum_x_squared.sum(axis=0) * turns_sum_xp_squared.sum(axis=0) - turns_sum_x_xp.sum(axis=0)**2) / (num_particle**2) )**(0.5)
+            turns_beam_emitY = ( (turns_sum_y_squared.sum(axis=0) * turns_sum_yp_squared.sum(axis=0) - turns_sum_y_yp.sum(axis=0)**2) / num_particle**2 )**(0.5)
+            turns_beam_emitS = ( (turns_sum_tau_squared.sum(axis=0) * turns_sum_delta_squared.sum(axis=0) - turns_sum_tau_delta.sum(axis=0)**2) / num_particle**2 )**(0.5)
             
-            # turns_beam_emitX = ( (sum_x_squared*sum_xp_squared - sum_x_xp**2)/(num_particle**2) )**(0.5)
-            # turns_beam_emitY = ( (sum_y_squared*sum_yp_squared - sum_y_yp**2)/num_particle**2 )**(0.5)
-            # turns_beam_emitS = ( (sum_tau_squared*sum_delta_squared - sum_tau_delta**2)/num_particle**2 )**(0.5)
+            print('gpu_beam_emitX (zeroth bunch, first turn): ' + str(turns_beam_emitX[0, 0]))
+            print('gpu_beam_emitX (last bunch, first turn): ' + str(turns_beam_emitX[num_bunch-1, 0]))
+            print('gpu_beam_emitY (zeroth bunch, first turn): ' + str(turns_beam_emitY[0, 0]))
+            print('gpu_beam_emitY (last bunch, first turn): ' + str(turns_beam_emitY[num_bunch-1, 0]))
+            print('gpu_beam_emitS (zeroth bunch, first turn): ' + str(turns_beam_emitS[0, 0]))
+            print('gpu_beam_emitS (last bunch, first turn): ' + str(turns_beam_emitS[num_bunch-1, 0]))
 
-            print('gpu_beam_emitX (zeroth bunch): ' + str(beam_emitX[0]))
-            print('gpu_beam_emitX (last bunch): ' + str(beam_emitX[num_bunch-1]))
-            print('gpu_beam_emitY (zeroth bunch): ' + str(beam_emitY[0]))
-            print('gpu_beam_emitY (last bunch): ' + str(beam_emitY[num_bunch-1]))
-            print('gpu_beam_emitS (zeroth bunch): ' + str(beam_emitS[0]))
-            print('gpu_beam_emitS (last bunch): ' + str(beam_emitS[num_bunch-1]))
-
-            # print(turns_beam_emitX[turns-1, 0])
-            # print(turns_beam_emitX[turns-1, num_bunch-1])
-            # print(turns_beam_emitY[turns-1, 0])
-            # print(turns_beam_emitY[turns-1, num_bunch-1])
-            # print(turns_beam_emitS[turns-1, 0])
-            # print(turns_beam_emitS[turns-1, num_bunch-1])
+            print('gpu_beam_emitX (zeroth bunch, last turn): ' + str(turns_beam_emitX[0, turns-1]))
+            print('gpu_beam_emitX (last bunch, last turn): ' + str(turns_beam_emitX[num_bunch-1, turns-1]))
+            print('gpu_beam_emitY (zeroth bunch, last turn): ' + str(turns_beam_emitY[0, turns-1]))
+            print('gpu_beam_emitY (last bunch, last turn): ' + str(turns_beam_emitY[num_bunch-1, turns-1]))
+            print('gpu_beam_emitS (zeroth bunch, last turn): ' + str(turns_beam_emitS[0, turns-1]))
+            print('gpu_beam_emitS (last bunch, last turn): ' + str(turns_beam_emitS[num_bunch-1, turns-1]))
 
         else:
             raise ValueError("To perform GPU calculations, CUDA_PARALLEL must be enabled in the mybeam.init_beam.")
