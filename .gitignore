@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# tracking data
+*.hdf5
+
+# vscode
+.vscode

@@ -1,7 +1,8 @@
-name: mbtrack2
+name: mbtrack2-cuda
 dependencies:
   - python>=3.6
   - numpy
+  - numba
   - pandas
   - scipy
   - h5py
