@@ -454,7 +454,7 @@ class CUDAMap(Element):
                         sum_delta_squared_shared[local_j, local_i] += sum_delta_squared_shared[local_j + s, local_i]
                         sum_tau_delta_shared[local_j, local_i] += sum_tau_delta_shared[local_j + s, local_i]
                      cuda.syncthreads()
-                     s = s // 2
+                     s >>= 1
                 
                    if local_j == 0 and i < num_bunch:
                         turns_sum_x_squared[cuda.blockIdx.y, i, k] = sum_x_squared_shared[0, local_i]
