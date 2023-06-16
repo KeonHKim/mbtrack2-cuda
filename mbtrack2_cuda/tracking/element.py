@@ -441,7 +441,8 @@ class CUDAMap(Element):
                    sum_tau_delta_shared[local_j, local_i] = tau_shared[local_j, local_i] * delta_shared[local_j, local_i]
                    cuda.syncthreads()
                 
-                   s = threadperblock[1] // 2
+                   s = threadperblock[1]
+                   s >>= 1
                    while s > 0:
                      if local_j < s and local_i < num_bunch:
                         sum_x_squared_shared[local_j, local_i] += sum_x_squared_shared[local_j + s, local_i]
