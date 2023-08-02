@@ -271,4 +271,3 @@ def plot_critical_mass(ring, bunch_charge, bunch_spacing, n_points=1e4):
     ax.set_xlabel("Longitudinal position [m]")
     
     return fig
-    

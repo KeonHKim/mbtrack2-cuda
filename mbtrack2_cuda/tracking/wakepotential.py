@@ -7,6 +7,8 @@ deal with the single bunch and multi-bunch wakes.
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import os
+import pickle
 from scipy import signal
 from scipy.interpolate import interp1d
 from scipy.constants import mu_0, c, pi
@@ -77,6 +79,9 @@ class WakePotential(Element):
         self.ring = ring
         self.n_bin = n_bin
         self.check_sampling()
+        
+        # Suppress numpy warning for floating-point operations.
+        np.seterr(invalid='ignore')
             
     def charge_density(self, bunch):
         """
@@ -283,6 +288,7 @@ class WakePotential(Element):
         
         setattr(self,"profile0_" + wake_type, profile0)
         setattr(self, wake_type, Wp)
+
         return tau0, Wp
     
     @Element.parallel
@@ -298,11 +304,21 @@ class WakePotential(Element):
         
         """
         
+        os.chdir('/home/alphaover2pi/projects/mbtrack2-cuda/data/')
+        filename_tau = f'tau_cpu.bin'
+        with open(filename_tau, 'wb') as file:
+            pickle.dump(bunch["tau"], file)
+
         if len(bunch) != 0:
             self.charge_density(bunch)
             for wake_type in self.types:
                 tau0, Wp = self.get_wakepotential(bunch, wake_type)
                 Wp_interp = np.interp(bunch["tau"], tau0 + self.tau_mean, Wp, 0, 0)
+
+                filename_Wp_interp = f'P_{wake_type}_interp.bin'
+                with open(filename_Wp_interp, 'wb') as file:
+                    pickle.dump(Wp_interp, file)
+
                 if wake_type == "Wlong":
                     bunch["delta"] += Wp_interp * bunch.charge / self.ring.E0
                 elif wake_type == "Wxdip":
@@ -347,6 +363,14 @@ class WakePotential(Element):
         
         Wp = getattr(self, wake_type)
         tau0 = getattr(self, "tau0_" + wake_type)
+        
+        os.chdir('/home/alphaover2pi/projects/mbtrack2-cuda/data/')
+        filename_tau0 = f'tau0_{wake_type}.bin'
+        filename_Wp = f'P_{wake_type}.bin'
+        with open(filename_tau0, 'wb') as file:
+            pickle.dump(tau0, file)
+        with open(filename_Wp, 'wb') as file:
+            pickle.dump(Wp, file)
         
         fig, ax = plt.subplots()
         ax.plot(tau0*1e12, Wp*1e-12, label=labels[wake_type])
@@ -411,9 +435,9 @@ class WakePotential(Element):
         if wake_type == "Wlong" or wake_type == "Wxquad" or wake_type == "Wyquad":
             Wp = signal.convolve(profile0, W0*-1, mode='same')*dtau0
         elif wake_type == "Wxdip":
-            Wp = signal.convolve(profile0*dipole0, W0*-1, mode='same')*dtau0
+            Wp = signal.convolve(profile0*dipole0, W0, mode='same')*dtau0
         elif wake_type == "Wydip":
-            Wp = signal.convolve(profile0*dipole0, W0*-1, mode='same')*dtau0
+            Wp = signal.convolve(profile0*dipole0, W0, mode='same')*dtau0
         else:
             raise ValueError("This type of wake is not taken into account.")
 
@@ -790,7 +814,7 @@ class LongRangeResistiveWall(Element):
         for wake_type in self.types:
             kick = self.get_kick(rank, wake_type)
             if wake_type == "Wlong":
-                bunch["delta"] += kick / self.ring.E0
+                bunch["delta"] -= kick / self.ring.E0
             elif wake_type == "Wxdip":
                 bunch["xp"] += kick / self.ring.E0
             elif wake_type == "Wydip":
@@ -823,5 +847,3 @@ class LongRangeResistiveWall(Element):
         else:
             for rank, bunch in enumerate(beam.not_empty):
                 self.track_bunch(bunch, rank)
-
-    

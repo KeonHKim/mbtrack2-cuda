@@ -4,7 +4,8 @@ General calculations about instability thresholds.
 """
 
 import numpy as np
-from scipy.constants import c, m_e, e, pi, epsilon_0
+import matplotlib.pyplot as plt
+from scipy.constants import c, m_e, e, pi, epsilon_0, mu_0
 import math
 
 def mbi_threshold(ring, sigma, R, b):
@@ -88,12 +89,12 @@ def cbi_threshold(ring, I, Vrf, f, beta, Ncav=1):
     
     return (Zlong, Zxdip, Zydip)
 
-def lcbi_growth_rate_mode(ring, I, Vrf, M, mu, fr=None, Rs=None, QL=None, Z=None):
+def lcbi_growth_rate_mode(ring, I, Vrf, M, mu, fr=None, RL=None, QL=None, Z=None):
     """
     Compute the longitudinal coupled bunch instability growth rate driven by
-    HOMs for a given coupled bunch mode mu [1].
+    an impedance for a given coupled bunch mode mu [1].
     
-    Use either the resonator model (fr,Rs,QL) or an Impedance object (Z).
+    Use either a list of resonators (fr, RL, QL) or an Impedance object (Z).
 
     Parameters
     ----------
@@ -106,12 +107,12 @@ def lcbi_growth_rate_mode(ring, I, Vrf, M, mu, fr=None, Rs=None, QL=None, Z=None
         Nomber of bunches in the beam.
     mu : int
         Coupled bunch mode number (= 0, ..., M-1).
-    fr : float, optional
-        Frequency of the HOM in [Hz].
-    Rs : float, optional
-        Shunt impedance of the HOM in [Ohm].
-    QL : float, optional
-        Loaded quality factor of the HOM.
+    fr : float or list, optional
+        Frequency of the resonator in [Hz].
+    RL : float or list, optional
+        Loaded shunt impedance of the resonator in [Ohm].
+    QL : float or list, optional
+        Loaded quality factor of the resonator.
     Z : Impedance, optional
         Longitunial impedance to consider.
 
@@ -131,11 +132,27 @@ def lcbi_growth_rate_mode(ring, I, Vrf, M, mu, fr=None, Rs=None, QL=None, Z=None
     nu_s = ring.synchrotron_tune(Vrf)
     factor = ring.eta * I / (4 * np.pi * ring.E0 * nu_s)
     
+    if isinstance(fr, (float, int)):
+        fr = np.array([fr])
+    elif isinstance(fr, list):
+        fr = np.array(fr)
+    if isinstance(RL, (float, int)):
+        RL = np.array([RL])
+    elif isinstance(RL, list):
+        RL = np.array(RL)
+    if isinstance(QL, (float, int)):
+        QL = np.array([QL])
+    elif isinstance(QL, list):
+        QL = np.array(QL)
+        
     if Z is None:
         omega_r = 2 * np.pi * fr
-        n_max = int(10 * omega_r / (ring.omega0 * M))
+        n_max = int(10 * omega_r.max() / (ring.omega0 * M))
         def Zr(omega):
-            return np.real(Rs / (1 + 1j * QL * (omega_r/omega - omega/omega_r)))
+            Z = 0
+            for i in range(len(fr)):
+                Z += np.real(RL[i] / (1 + 1j * QL[i] * (omega_r[i]/omega - omega/omega_r[i])))
+            return Z
     else:
         fmax = Z.data.index.max()
         n_max = int(2 * np.pi * fmax / (ring.omega0 * M))
@@ -151,12 +168,12 @@ def lcbi_growth_rate_mode(ring, I, Vrf, M, mu, fr=None, Rs=None, QL=None, Z=None
 
     return factor * sum_val
     
-def lcbi_growth_rate(ring, I, Vrf, M, fr=None, Rs=None, QL=None, Z=None):
+def lcbi_growth_rate(ring, I, Vrf, M, fr=None, RL=None, QL=None, Z=None):
     """
     Compute the maximum growth rate for longitudinal coupled bunch instability 
-    driven by HOMs [1].
+    driven an impedance [1].
     
-    Use either the resonator model (fr,Rs,QL) or an Impedance object (Z).
+    Use either a list of resonators (fr, RL, QL) or an Impedance object (Z).
 
     Parameters
     ----------
@@ -167,11 +184,11 @@ def lcbi_growth_rate(ring, I, Vrf, M, fr=None, Rs=None, QL=None, Z=None):
         Total RF voltage in [V].
     M : int
         Nomber of bunches in the beam.
-    fr : float, optional
+    fr : float or list, optional
         Frequency of the HOM in [Hz].
-    Rs : float, optional
-        Shunt impedance of the HOM in [Ohm].
-    QL : float, optional
+    RL : float or list, optional
+        Loaded shunt impedance of the HOM in [Ohm].
+    QL : float or list, optional
         Loaded quality factor of the HOM.
     Z : Impedance, optional
         Longitunial impedance to consider.
@@ -195,12 +212,70 @@ def lcbi_growth_rate(ring, I, Vrf, M, fr=None, Rs=None, QL=None, Z=None):
     """
     growth_rates = np.zeros(M)
     for i in range(M):
-        growth_rates[i] = lcbi_growth_rate_mode(ring, I, Vrf, M, i, fr=fr, Rs=Rs, QL=QL, Z=Z)
+        growth_rates[i] = lcbi_growth_rate_mode(ring, I, Vrf, M, i, fr=fr, RL=RL, QL=QL, Z=Z)
     
     growth_rate = np.max(growth_rates)
     mu = np.argmax(growth_rates)
     
     return growth_rate, mu, growth_rates
+
+def lcbi_stability_diagram(ring, I, Vrf, M, modes, cavity_list, detune_range):
+    """
+    Plot longitudinal coupled bunch instability stability diagram for a 
+    arbitrary list of CavityResonator objects around a detuning range.
+    
+    Last object in the cavity_list is assumed to be the one with the variable 
+    detuning.
+
+    Parameters
+    ----------
+    ring : Synchrotron object
+        Ring parameters.
+    I : float
+        Total beam current in [A].
+    Vrf : float
+        Total RF voltage in [V].
+    M : int
+        Nomber of bunches in the beam.
+    modes : list
+        Coupled bunch mode numbers to consider.
+    cavity_list : list
+        List of CavityResonator objects to consider, which can be:
+            - active cavities
+            - passive cavities
+            - HOMs
+            - mode dampers
+    detune_range : array
+        Detuning range (list of points) of the last CavityResonator object.
+
+    Returns
+    -------
+    fig : Figure
+        Show the shunt impedance threshold for different coupled bunch modes.
+
+    """
+    
+    Rth = np.zeros_like(detune_range)
+    fig, ax = plt.subplots()
+
+    for mu in modes:
+        fixed_gr = 0
+        for cav in cavity_list[:-1]:
+            fixed_gr += lcbi_growth_rate_mode(ring, I=I, Vrf=Vrf, mu=mu, fr=cav.fr, RL=cav.RL, QL=cav.QL, M=M)
+        
+        cav = cavity_list[-1]
+        for i, det in enumerate(detune_range):
+            gr = lcbi_growth_rate_mode(ring, I=I, Vrf=Vrf, mu=mu, fr=cav.m*ring.f1 + det, RL=cav.RL, QL=cav.QL, M=M)
+            Rth[i] = (1/ring.tau[2] - fixed_gr) * cav.Rs / gr
+
+        ax.plot(detune_range*1e-3, Rth*1e-6, label="$\mu$ = " + str(int(mu)))
+    
+    plt.xlabel(r"$\Delta f$ [kHz]")
+    plt.ylabel(r"$R_{s,max}$ $[M\Omega]$")
+    plt.yscale("log")
+    plt.legend()
+        
+    return fig
     
 def rwmbi_growth_rate(ring, current, beff, rho_material, plane='x'):
     """
@@ -233,7 +308,7 @@ def rwmbi_growth_rate(ring, current, beff, rho_material, plane='x'):
     E0 = ring.E0
     R = ring.L/(2*np.pi)
     frac_tune, int_tune = math.modf(ring.tune[index])
-    Z0 = 377.7 # Vacuum impedance [Ohm]
+    Z0 = mu_0*c # Vacuum impedance [Ohm]
     
     gr = (beta0*omega0*current*R) /(4*np.pi*E0*beff**3) * ((2*c*Z0*rho_material) / ((1-frac_tune)*omega0))**0.5
     
@@ -268,9 +343,8 @@ def rwmbi_threshold(ring, beff, rho_material, plane='x'):
     E0 = ring.E0
     tau_rad = ring.tau[index]
     frac_tune, int_tune = math.modf(ring.tune[index])
-    Z0 = 377.7 # Vacuum impedance [Ohm]
+    Z0 = mu_0*c # Vacuum impedance [Ohm]
     
     Ith = (4*np.pi*E0*beff**3) / (c*beta0*tau_rad) * (((1-frac_tune)*omega0) / (2*c*Z0*rho_material))**0.5
     
     return Ith
-       

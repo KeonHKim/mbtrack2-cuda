@@ -77,6 +77,9 @@ class WakePotential(Element):
         self.ring = ring
         self.n_bin = n_bin
         self.check_sampling()
+        
+        # Suppress numpy warning for floating-point operations.
+        np.seterr(invalid='ignore')
             
     def charge_density(self, bunch):
         """
@@ -411,9 +414,9 @@ class WakePotential(Element):
         if wake_type == "Wlong" or wake_type == "Wxquad" or wake_type == "Wyquad":
             Wp = signal.convolve(profile0, W0*-1, mode='same')*dtau0
         elif wake_type == "Wxdip":
-            Wp = signal.convolve(profile0*dipole0, W0*-1, mode='same')*dtau0
+            Wp = signal.convolve(profile0*dipole0, W0, mode='same')*dtau0
         elif wake_type == "Wydip":
-            Wp = signal.convolve(profile0*dipole0, W0*-1, mode='same')*dtau0
+            Wp = signal.convolve(profile0*dipole0, W0, mode='same')*dtau0
         else:
             raise ValueError("This type of wake is not taken into account.")
 
@@ -790,7 +793,7 @@ class LongRangeResistiveWall(Element):
         for wake_type in self.types:
             kick = self.get_kick(rank, wake_type)
             if wake_type == "Wlong":
-                bunch["delta"] += kick / self.ring.E0
+                bunch["delta"] -= kick / self.ring.E0
             elif wake_type == "Wxdip":
                 bunch["xp"] += kick / self.ring.E0
             elif wake_type == "Wydip":
@@ -823,5 +826,3 @@ class LongRangeResistiveWall(Element):
         else:
             for rank, bunch in enumerate(beam.not_empty):
                 self.track_bunch(bunch, rank)
-
-    

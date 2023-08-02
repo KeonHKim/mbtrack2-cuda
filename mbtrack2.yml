@@ -1,6 +1,6 @@
 name: mbtrack2-cuda
 dependencies:
-  - python>=3.6
+  - python>=3.8
   - numpy
   - numba
   - pandas

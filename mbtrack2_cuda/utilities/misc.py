@@ -236,4 +236,3 @@ def double_sided_impedance(impedance):
         all_data = impedance.data.append(negative_data)
         all_data = all_data.sort_index()
         impedance.data = all_data
-        
