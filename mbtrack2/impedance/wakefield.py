@@ -183,6 +183,9 @@ class ComplexData:
                              y = self.data["imag"], kind=interp_kind)
         return real_func(values) + 1j*imag_func(values)
     
+    def __repr__(self):
+        """Return representation of data"""
+        return f'{(self.data)!r}'
     
     def initialize_coefficient(self):
         """
@@ -257,7 +260,7 @@ class WakeFunction(ComplexData):
     variable : array-like
         Time domain structure of the wake function in [s].
     function : array-like
-        Wake function values in [V/C].
+        Wake function values in [V/C] for "long" and in [V/C/m] for others.
     component_type : str, optinal
         Type of the wake function: "long", "xdip", "xquad", ...
     
@@ -268,9 +271,14 @@ class WakeFunction(ComplexData):
     
     Methods
     -------
-    from_wakepotential(file_name, bunch_length, bunch_charge, freq_lim)
-        Compute a wake function from a wake potential file and load it to the 
-        WakeFunction object.
+    to_impedance()
+        Return an Impedance object from the WakeFunction data.
+    deconvolution(freq_lim, sigma, mu)
+        Compute a wake function from wake potential data.
+    plot()
+        Plot the wake function data.
+    loss_factor(sigma)
+        Compute the loss factor or the kick factor for a Gaussian bunch.
     """
 
     def __init__(self,
@@ -280,6 +288,10 @@ class WakeFunction(ComplexData):
         self._component_type = component_type
         self.data.index.name = "time [s]"
         self.initialize_coefficient()
+        
+    def __repr__(self):
+        """Return representation of data"""
+        return f'WakeFunction of component_type {self.component_type}:\n {(self.data)!r}'
         
     def add(self, structure_to_add, method='zero'):
         """
@@ -331,60 +343,147 @@ class WakeFunction(ComplexData):
     def __rmul__(self, factor):
         return self.multiply(factor)
         
-    def from_wakepotential(self, file_name, bunch_length, bunch_charge, 
-                           freq_lim, component_type="long", divide_by=None, 
-                           nout=None, trim=False, axis0='dist', 
-                           axis0_scale=1e-3, axis1_scale=1e-12):
+    def to_impedance(self, freq_lim, nout=None, sigma=None, mu=None):   
         """
-        Compute a wake function from a wake potential file and load it to the 
-        WakeFunction object.
-    
+        Return an Impedance object from the WakeFunction data.
+        The WakeFunction data is assumed to be sampled equally.
+        
+        If both sigma and mu are given, the impedance data is divided by the
+        Fourier transform of a Gaussian distribution. It then can be used to go 
+        from wake potential data to impedance.
+
         Parameters
         ----------
-        file_name : str
-            Text file that contains wake potential data.
-        bunch_length : float
-            Spatial bunch length in [m].
-        bunch_charge : float
-            Bunch charge in [C].
         freq_lim : float
             The maximum frequency for calculating the impedance [Hz].
-        component_type : str, optional
-            Type of the wake: "long", "xdip", "xquad", ...
-        divide_by : float, optional
-            Divide the wake potential by a value. Mainly used to normalize 
-            transverse wake function by displacement.
-        nout : int, optional
+        nout : int or float, optional
             Length of the transformed axis of the output. If None, it is taken
             to be 2*(n-1) where n is the length of the input. If nout > n, the
-            input is padded with zeros. If nout < n, the inpu it cropped.
+            input is padded with zeros. If nout < n, the input it cropped.
             Note that, for any nout value, nout//2+1 input points are required.
-        trim : bool or float, optional
-            If True, the pseudo wake function is trimmed at time=0 and is forced 
-            to zero where time<0. 
-            If False, the original result is preserved.
-            If a float is given, the pseudo wake function is trimmed from 
-            time <= trim to 0.
-        axis0 : {'dist', 'time'}, optional
-            Viariable of the data file's first column. Use 'dist' for spacial 
-            distance. Otherwise, 'time' for temporal distance. 
-        axis0_scale : float, optional
-            Scale of the first column with respect to meter if axis0 = 'dist',
-            or to second if axis0 = 'time'.
-        axis1_scale : float, optional
-            Scale of the wake potential (in second column) with respect to V/C.
-    
+            The default is None.
+        sigma : float
+            RMS of the Gaussian distribution in [s].
+            The default is None.
+        mu : float
+            Offset of the Gaussian distribution in [s].
+            The default is None.
+
         """
+        tau = np.array(self.data.index)
+        wp = np.array(self.data["real"])
         
-        imp = Impedance()
-        imp.from_wakepotential(file_name=file_name, bunch_length=bunch_length,
-                               bunch_charge=bunch_charge, freq_lim=freq_lim,
-                               component_type=component_type, divide_by=divide_by,
-                               axis0=axis0, axis0_scale=axis0_scale,
-                               axis1_scale=axis1_scale)
-        wf = imp.to_wakefunction(nout=nout, trim=trim)
-        self.__init__(variable=wf.data.index, function=wf.data["real"],
-                      component_type=component_type)
+        if nout is None:
+            nout = len(tau)
+        else:
+            nout = int(nout)
+        
+        # FT of wake potential
+        sampling = tau[1] - tau[0]
+        freq = sc.fft.rfftfreq(nout, sampling)
+        dtau = (tau[-1]-tau[0])/len(tau)
+        dft_wake = sc.fft.rfft(wp, n=nout, axis=0) * dtau
+        
+        i_limit = freq < freq_lim
+        freq_trun = freq[i_limit]
+        dft_wake_trun = dft_wake[i_limit]
+        
+        if (sigma is not None) and (mu is not None):
+            dft_rho_trun = np.exp(-0.5*(sigma*2*np.pi*freq_trun)**2 + \
+                                      1j*mu*2*np.pi*freq_trun)
+        else:
+            dft_rho_trun = -1
+            
+        if self.component_type == "long":
+            imp = dft_wake_trun/dft_rho_trun*-1
+        elif (self.component_type == "xdip") or (self.component_type == "ydip"):
+            imp = dft_wake_trun/dft_rho_trun*-1j
+        else:
+            raise NotImplementedError(self.component_type + " is not correct.")
+            
+        imp = Impedance(variable=freq_trun, function=imp, 
+                         component_type=self.component_type)
+        
+        return imp
+    
+    def deconvolution(self, freq_lim, sigma, mu, nout=None):
+        """
+        Compute a wake function from wake potential data.
+                
+        The present data loaded into the WakeFunction object is assumed to be 
+        an uniformly sampled wake potential from a Gaussian bunch distribution 
+        with RMS bunch length sigma and offset mu.
+        
+        The offset mu depends on the code used to compute the wake potential:
+            - for CST, it is the first time sample, so self.data.index[0].
+            - for ABCI, it is "-1 * ISIG * SIG / c".
+
+        Parameters
+        ----------
+        freq_lim : float
+            The maximum frequency for calculating the impedance [Hz].
+        sigma : float
+            RMS of the Gaussian distribution in [s].
+        mu : float
+            Offset of the Gaussian distribution in [s].
+        nout : int or float, optional
+            Length of the transformed axis of the output. If None, it is taken
+            to be 2*(n-1) where n is the length of the input. If nout > n, the
+            input is padded with zeros. If nout < n, the input it cropped.
+            Note that, for any nout value, nout//2+1 input points are required.
+            The default is None.
+
+        """
+        imp = self.to_impedance(freq_lim, sigma=sigma, mu=mu)
+        wf = imp.to_wakefunction(nout=nout)
+        return wf
+        
+    def plot(self):
+        """
+        Plot the wake function data.
+
+        Returns
+        -------
+        ax : class:`matplotlib.axes.Axes`
+            Wake function data.
+
+        """
+        ax = self.data["real"].plot()
+        if self.component_type == "long":
+            unit = " [V/C]"
+        else:
+            unit = " [V/C/m]"
+        label = r"$W_{" + self.component_type + r"}$" + unit
+        ax.set_ylabel(label)
+        return ax
+    
+    def loss_factor(self, sigma):
+        """
+        Compute the loss factor or the kick factor for a Gaussian bunch. 
+        Formulas from Eq. (5.6), Eq. (5.12) and Eq. (5.17) of [1].
+        
+        Parameters
+        ----------
+        sigma : float
+            RMS bunch length in [s]
+        
+        Returns
+        -------
+        kloss: float
+            Loss factor in [V/C] or kick factor in [V/C/m] depanding on the 
+            impedance type.
+            
+        References
+        ----------
+        [1] : Zotter, Bruno W., and Semyon A. Kheifets. Impedances and wakes 
+        in high-energy particle accelerators. World Scientific, 1998.
+        
+        """
+        time = self.data.index
+        S = 1/(2*np.sqrt(np.pi)*sigma)*np.exp(-1*time**2/(4*sigma**2))
+        kloss = trapz(x = time, y = self.data["real"]*S)
+
+        return kloss
         
 class Impedance(ComplexData):
     """
@@ -406,13 +505,12 @@ class Impedance(ComplexData):
     
     Methods
     -------
-    from_wakepotential(file_name, bunch_length, bunch_charge, freq_lim)
-        Compute impedance from wake potential data and load it to the Impedance
-        object.
     loss_factor(sigma)
         Compute the loss factor or the kick factor for a Gaussian bunch.
     to_wakefunction()
         Return a WakeFunction object from the impedance data.
+    plot()
+        Plot the impedance data.
     """
 
     def __init__(self,
@@ -422,6 +520,10 @@ class Impedance(ComplexData):
         self._component_type = component_type
         self.data.index.name = 'frequency [Hz]'
         self.initialize_coefficient()
+        
+    def __repr__(self):
+        """Return representation of data"""
+        return f'Impedance of component_type {self.component_type}:\n {(self.data)!r}'
 
     def add(self, structure_to_add, beta_x=1, beta_y=1, method='zero'):
         """
@@ -516,78 +618,7 @@ class Impedance(ComplexData):
             raise TypeError("Impedance type not recognized.")
 
         return kloss
-    
-    def from_wakepotential(self, file_name, bunch_length, bunch_charge, 
-                           freq_lim, component_type="long", divide_by=None,
-                           axis0='dist', axis0_scale=1e-3, axis1_scale=1e-12):
-        """
-        Compute impedance from wake potential data and load it to the Impedance
-        object.
-
-        Parameters
-        ----------
-        file_name : str
-            Text file that contains wake potential data.
-        bunch_length : float
-            Electron bunch lenth [m]. 
-        bunch_charge : float
-            Total bunch charge [C].
-        freq_lim : float
-            The maximum frequency for calculating the impedance [Hz].
-        component_type : str, optional
-            Type of the impedance: "long", "xdip", "xquad", ...
-        divide_by : float, optional
-            Divide the impedance by a value. Mainly used to normalize transverse 
-            impedance by displacement.
-        axis0 : {'dist', 'time'}, optional
-            Viariable of the data file's first column. Use 'dist' for spacial 
-            distance. Otherwise, 'time' for temporal distance. 
-        axis0_scale : float, optional
-            Scale of the first column with respect to meter if axis0 = 'dist',
-            or to second if axis0 = 'time'.
-        axis1_scale : float, optional
-            Scale of the wake potential (in second column) with respect to V/C.
-
-        """
-        
-        s, wp0 = np.loadtxt(file_name, unpack=True)
-        if axis0 == 'dist':
-            tau = s*axis0_scale/c
-        elif axis0 == 'time':
-            tau = s*axis0_scale
-        else:
-            raise TypeError('Type of axis 0 not recognized.')
-            
-        wp = wp0 / axis1_scale
-        if divide_by is not None:
-            wp = wp / divide_by
-        
-        # FT of wake potential
-        sampling = tau[1] - tau[0]
-        freq = sc.fft.rfftfreq(len(tau), sampling)
-        dtau = (tau[-1]-tau[0])/len(tau)
-        dft_wake = sc.fft.rfft(wp) * dtau
-        
-        # FT of analytical bunch profile and analytical impedance
-        sigma = bunch_length/c
-        mu = tau[0]
-        
-        i_limit = freq < freq_lim
-        freq_trun = freq[i_limit]
-        dft_wake_trun = dft_wake[i_limit]
-        
-        dft_rho_trun = np.exp(-0.5*(sigma*2*np.pi*freq_trun)**2 + \
-                                  1j*mu*2*np.pi*freq_trun)*bunch_charge
-        if component_type == "long":
-            imp = dft_wake_trun/dft_rho_trun*-1*bunch_charge
-        elif (component_type == "xdip") or (component_type == "ydip"):
-            imp = dft_wake_trun/dft_rho_trun*-1j*bunch_charge
-        else:
-            raise NotImplementedError(component_type + " is not correct.")
-            
-        self.__init__(variable=freq_trun, function=imp, 
-                         component_type=component_type)
-        
+           
     def to_wakefunction(self, nout=None, trim=False):
         """
         Return a WakeFunction object from the impedance data.
@@ -637,6 +668,25 @@ class Impedance(ComplexData):
                           component_type=self.component_type)
         return wf
     
+    def plot(self):
+        """
+        Plot the impedance data.
+
+        Returns
+        -------
+        ax : class:`matplotlib.axes.Axes`
+            Impedance data.
+
+        """
+        ax = self.data.plot()
+        if self.component_type == "long":
+            unit = " [ohm]"
+        else:
+            unit = " [ohm/m]"
+        label = r"$Z_{" + self.component_type + r"}$" + unit
+        ax.set_ylabel(label)
+        return ax
+    
 class WakeField:
     """
     Defines a WakeField which corresponds to a single physical element which 
@@ -679,6 +729,27 @@ class WakeField:
     def __init__(self, structure_list=None, name=None):
         self.list_to_attr(structure_list)
         self.name = name
+        
+    def __repr__(self):
+        """Return representation of WakeField components."""
+        return f'WakeField {self.name} with components:\n {(list(self.components))!r}'
+    
+    def __radd__(self, structure_to_add):
+        return self._add(structure_to_add)
+
+    def __add__(self, structure_to_add):
+        return self._add(structure_to_add)
+    
+    def __iter__(self):
+        """Iterate over components"""
+        comp = [getattr(self, comp) for comp in self.components]
+        return comp.__iter__()
+    
+    def _add(self, structure_to_add):
+        """Allow to add two WakeField element with different components."""
+        for comp in structure_to_add.components:
+            self.append_to_model(getattr(structure_to_add, comp))
+        return self
 
     def append_to_model(self, structure_to_add):
         """
@@ -708,7 +779,7 @@ class WakeField:
     
     def list_to_attr(self, structure_list):
         """
-         Add list of Impedance/WakeFunction components to WakeField.
+        Add list of Impedance/WakeFunction components to WakeField.
 
         Parameters
         ----------
@@ -873,7 +944,7 @@ class WakeField:
         Returns
         -------
         wake_sum : WakeField
-            WakeField with summed components..
+            WakeField with summed components.
 
         """
         if len(wakefields) == 1:
@@ -887,4 +958,3 @@ class WakeField:
             return wake_sum
         else:
             raise ValueError("Error in input.")
-        

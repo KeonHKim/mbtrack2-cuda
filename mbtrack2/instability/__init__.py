@@ -8,4 +8,5 @@ from mbtrack2.instability.instabilities import (mbi_threshold,
                                                 lcbi_growth_rate_mode,
                                                 lcbi_growth_rate,
                                                 rwmbi_growth_rate,
-                                                rwmbi_threshold)
+                                                rwmbi_threshold,
+                                                lcbi_stability_diagram)

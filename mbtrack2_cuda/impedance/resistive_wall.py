@@ -322,14 +322,14 @@ class Coating(WakeField):
         
         if approx == False:
             alpha = skin1/skin2
-            tanh = np.tanh( (1 - 1j*np.sign(f)) * self.thickness / skin1 )
-            bracket = ( (np.sign(f) - 1j) * skin1 * 
+            tanh = np.tanh( (1 + 1j*np.sign(f)) * self.thickness / skin1 )
+            bracket = ( (np.sign(f) + 1j) * skin1 * 
                        (alpha * tanh + 1) / (alpha + tanh) )
         else:
             valid_approx = self.thickness / np.min(skin1)
             if valid_approx < 0.01:
                 print("Approximation is not valid. Returning impedance anyway.")
-            bracket = ( (np.sign(f) - 1j) * skin2 - 2 * 1j * self.thickness * 
+            bracket = ( (np.sign(f) + 1j) * skin2 + 2 * 1j * self.thickness * 
                        (1 - self.rho2/self.rho1) )
         
         Zl = factor * bracket
@@ -370,23 +370,16 @@ class Coating(WakeField):
         
         if approx == False:
             alpha = skin1/skin2
-            tanh = np.tanh( (1 - 1j*np.sign(f)) * self.thickness / skin1 )
-            bracket = ( (1 - 1j*np.sign(f)) * skin1 * 
+            tanh = np.tanh( (1 + 1j*np.sign(f)) * self.thickness / skin1 )
+            bracket = ( (1 + 1j*np.sign(f)) * skin1 * 
                        (alpha * tanh + 1) / (alpha + tanh) )
         else:
             valid_approx = self.thickness / np.min(skin1)
             if valid_approx < 0.01:
                 print("Approximation is not valid. Returning impedance anyway.")
-            bracket = ( (1 - 1j*np.sign(f)) * skin2 - 2 * 1j * self.thickness 
+            bracket = ( (1 + 1j*np.sign(f)) * skin2 + 2 * 1j * self.thickness 
                        * np.sign(f) * (1 - self.rho2/self.rho1) )
         
         Zt = factor * bracket
         
         return Zt
-        
-        
-        
-        
-        
-        
-        

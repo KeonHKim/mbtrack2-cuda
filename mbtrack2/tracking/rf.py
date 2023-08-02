@@ -200,8 +200,8 @@ class CavityResonator():
         self.detune = detune
         self.Vc = Vc
         self.theta = theta
-        self.beam_phasor = np.zeros(1, dtype=np.complex)
-        self.beam_phasor_record = np.zeros((self.ring.h), dtype=np.complex)
+        self.beam_phasor = np.zeros(1, dtype=complex)
+        self.beam_phasor_record = np.zeros((self.ring.h), dtype=complex)
         self.tracking = False
         self.Vg = 0
         self.theta_g = 0

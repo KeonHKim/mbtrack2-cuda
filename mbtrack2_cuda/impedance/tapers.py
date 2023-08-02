@@ -204,7 +204,3 @@ class StupakovCircularTaper(WakeField):
         
         return (self.Z0*c/(4*pi**2*frequency)*(1/(self.radius_exit**2) - 
                1/(self.radius_entrance**2))  - 1j*self.Z0/(2*pi)*integral)
-
-
-
-

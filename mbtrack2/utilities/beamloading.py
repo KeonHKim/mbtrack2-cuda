@@ -138,7 +138,7 @@ class BeamLoadingEquilibrium():
                 cavity = self.cavity_list[i]
                 if cavity.m == 1:
                     cavity.theta = x[-1]
-                    cavity.set_generator(0.5)
+                    cavity.set_generator(self.I0)
                     self.update_potentials()
         else:
             self.F = x[::2]
@@ -180,8 +180,8 @@ class BeamLoadingEquilibrium():
         if z2 is None:
             z2 = self.B2
         z0 = np.linspace(z1, z2, 1000)
-        plt.plot(z0, self.rho(z0))
-        plt.xlabel("z [m]")
+        plt.plot(z0/c*1e12, self.rho(z0))
+        plt.xlabel(r"$\tau$ [ps]")
         plt.title("Equilibrium bunch profile")
         
     def voltage(self, z):
@@ -308,3 +308,70 @@ class BeamLoadingEquilibrium():
             self.plot_rho(self.B1 / 4, self.B2 / 4)
 
         return sol
+    
+    def PTBL_threshold(self, I0, m=None, MC_index=0, HC_index=1):
+        """
+        Compute the periodic transient beam loading (PTBL) instability 
+        threshold based on [1].
+        
+        The beam_equilibrium method should be called before the PTBL_threshold 
+        one.
+        
+        Eq. (22) and (23) have been modified for cosine voltage convention 
+        for the main cavity.
+
+        Parameters
+        ----------
+        I0 : float
+            Beam total current in [A].
+        m : int, optional
+            Number of bunches in the beam. 
+            The default is None. If None, uniform filling is assumed.
+        MC_index : int, optional
+            Index of the main cavity in cavity_list. The default is 0.
+        HC_index : TYPE, optional
+            Index of the harmonic cavity in cavity_list. The default is 1.
+
+        Returns
+        -------
+        eta : float
+            Amplification factor, if bigger than 1 then the beam is possibly 
+            in the PTBL regime, Eq. (22) of [1].
+        RQth : float
+            R/Q threshold, Eq. (24) of [1].
+        f : float
+            f function, Eq. (23) of [1].
+            
+        Reference
+        ---------
+        [1] : He, T. (2022). Novel perturbation method for judging the 
+        stability of the equilibrium solution in the presence of passive 
+        harmonic cavities. Physical Review Accelerators and Beams, 25(9), 
+        094402.
+
+        """
+        if m is None:
+            m = self.ring.h
+            
+        MC = self.cavity_list[MC_index]
+        HC = self.cavity_list[HC_index]
+        a = np.exp(-HC.wr*self.ring.T0/(2*HC.Q))
+        theta = HC.detune*2*np.pi*self.ring.T0
+        dtheta = np.arcsin((1-a)*np.cos(theta/2)/(np.sqrt(1+a**2-2*a*np.cos(theta))))
+        
+        k = np.arange(1, m)
+        d_k = np.exp(-1*HC.wr*self.ring.T0*(k-1)/(2*HC.Q*m))
+        theta_k = (theta/2 + dtheta - (k-1)/m * theta)
+        eps_k = 1 - np.sin(np.pi/2 - k*2*np.pi/m)
+                   
+        num = np.sum(eps_k * d_k * np.cos(theta_k))
+        f = num / ( m * np.sqrt(1 + a**2 - 2*a*np.cos(theta)) )
+        
+        eta = (2 * np.pi * HC.m**2 * self.F[HC_index] * self.ring.h * I0 * 
+               HC.Rs / HC.Q * f / 
+               ( MC.Vc * np.sin(MC.theta - self.PHI[HC_index] / HC.m) ) )
+        
+        RQth = (MC.Vc * np.sin(MC.theta - self.PHI[HC_index] / HC.m) / 
+                (2 * np.pi * HC.m**2 * self.F[1] * self.ring.h * I0 * f))
+        
+        return (eta, RQth, f)

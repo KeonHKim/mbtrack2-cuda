@@ -123,6 +123,7 @@ class Optics:
         self.beta_array = np.tile(twiss.beta.T, self.periodicity)
         self.alpha_array = np.tile(twiss.alpha.T, self.periodicity)
         self.dispersion_array = np.tile(twiss.dispersion.T, self.periodicity)
+        self.mu_array = np.tile(twiss.mu.T, self.periodicity)
         
         self.position = np.append(self.position, self.lattice.circumference)
         self.beta_array = np.append(self.beta_array, self.beta_array[:,0:1],
@@ -131,11 +132,16 @@ class Optics:
                                      axis=1)
         self.dispersion_array = np.append(self.dispersion_array,
                                           self.dispersion_array[:,0:1], axis=1)
+        self.mu_array = np.append(self.mu_array,
+                                  self.mu_array[:,0:1], axis=1)
         
         self.gamma_array = (1 + self.alpha_array**2)/self.beta_array
         self.tune = tune * self.periodicity
         self.chro = chrom * self.periodicity
         self.ac = at.get_mcf(self.lattice)
+        
+        self.mu_array[:,-1] = (np.floor(self.mu_array[:,-2]/(2*np.pi)) +
+                               self.tune)*2*np.pi
         
         self.setup_interpolation()
         
@@ -162,6 +168,10 @@ class Optics:
                               kind='linear')
         self.disppY = interp1d(self.position, self.dispersion_array[3,:],
                                kind='linear')
+        self.muX = interp1d(self.position, self.mu_array[0,:],
+                              kind='linear')
+        self.muY = interp1d(self.position, self.mu_array[1,:],
+                              kind='linear')
     
     @property
     def local_beta(self):
@@ -303,13 +313,34 @@ class Optics:
                           self.dispY(position), self.disppY(position)]
             return np.array(dispersion)
         
+    def mu(self, position):
+        """
+        Return phase advances at specific locations given by position. 
+        If no lattice has been loaded, None is returned.
+
+        Parameters
+        ----------
+        position : array or float
+            Longitudinal position at which the phase advances are returned.
+
+        Returns
+        -------
+        mu : array
+            Phase advances.
+        """
+        if self.use_local_values:
+            return np.outer(np.array([0,0]), np.ones_like(position))
+        else:
+            mu = [self.muX(position), self.muY(position)]
+            return np.array(mu)
+        
     def plot(self, var, option, n_points=1000):
         """
         Plot optical variables.
     
         Parameters
         ----------
-        var : {"beta", "alpha", "gamma", "dispersion"}
+        var : {"beta", "alpha", "gamma", "dispersion", "mu"}
             Optical variable to be plotted.
         option : str
             If var = "beta", "alpha" and "gamma", option = {"x","y"} specifying
@@ -322,7 +353,7 @@ class Optics:
         """
     
         var_dict = {"beta":self.beta, "alpha":self.alpha, "gamma":self.gamma, 
-                    "dispersion":self.dispersion}
+                    "dispersion":self.dispersion, "mu":self.mu}
         
         if var == "dispersion":
             option_dict = {"x":0, "px":1, "y":2, "py":3}
@@ -332,15 +363,15 @@ class Optics:
             ylabel = label[option_dict[option]]
          
         
-        elif var=="beta" or var=="alpha" or var=="gamma":
+        elif var=="beta" or var=="alpha" or var=="gamma" or var=="mu":
             option_dict = {"x":0, "y":1}
             label_dict = {"beta":"$\\beta$", "alpha":"$\\alpha$", 
-                          "gamma":"$\\gamma$"}
+                          "gamma":"$\\gamma$", "mu":"$\\mu$"}
             
             if option == "x": label_sup = "$_{x}$"
             elif option == "y": label_sup = "$_{y}$"
             
-            unit = {"beta":" (m)", "alpha":"", "gamma":" (m$^{-1}$)"}
+            unit = {"beta":" (m)", "alpha":"", "gamma":" (m$^{-1}$)", "mu":""}
             
             ylabel = label_dict[var] + label_sup + unit[var]
   
@@ -450,17 +481,21 @@ class PhysicalModel:
         """
         Return the effective radius of the chamber for resistive wall 
         calculations as defined in Eq. 27 of [1].
+        
+        Section with rho = 0 ohm.m are not considered in this calculation.
 
         Parameters
         ----------
         optics : Optics object
         x_right : bool, optional
             If True, x_right is used, if Fasle, x_left is used.
-        y_top : TYPE, optional
+        y_top : bool, optional
             If True, y_top is used, if Fasle, y_bottom is used.
 
         Returns
         -------
+        L : float
+            Total length considered in [m].
         rho_star : float
             Effective resistivity of the chamber material in [ohm.m].
         a1_L : float
@@ -489,6 +524,8 @@ class PhysicalModel:
         Spectrometers, Detectors and Associated Equipment 806 (2016): 221-230.         
         """
         
+        idx = self.rho != 0
+        
         if x_right is True:
             a0 = (self.x_right[1:] + self.x_right[:-1])/2
         else:
@@ -498,33 +535,39 @@ class PhysicalModel:
             b0 = (self.y_top[1:] + self.y_top[:-1])/2
         else:
             b0 = np.abs((self.y_bottom[1:] + self.y_bottom[:-1])/2)
+            
+        a0 = a0[idx]
+        b0 = b0[idx]
         
-        beta = optics.beta(self.center)
-        L = self.position[-1]
-        sigma = 1/self.rho
-        beta_H_star = 1/L*(self.length*beta[0,:]).sum()
-        beta_V_star = 1/L*(self.length*beta[1,:]).sum()
-        sigma_star = 1/L*(self.length*sigma).sum()
+        beta = optics.beta(self.center[idx])
+        length = self.length[idx]
         
-        a1_H = (((self.length*beta[0,:]/(np.sqrt(sigma)*(a0)**1)).sum())**(-1)*L*beta_H_star/np.sqrt(sigma_star))**(1/1)
-        a2_H = (((self.length*beta[0,:]/(np.sqrt(sigma)*(a0)**2)).sum())**(-1)*L*beta_H_star/np.sqrt(sigma_star))**(1/2)
+        L = length.sum()
+        sigma = 1/self.rho[idx]
+        beta_H_star = 1/L*(length*beta[0,:]).sum()
+        beta_V_star = 1/L*(length*beta[1,:]).sum()
+        sigma_star = 1/L*(length*sigma).sum()
+        
+        a1_H = (((length*beta[0,:]/(np.sqrt(sigma)*(a0)**1)).sum())**(-1)*L*beta_H_star/np.sqrt(sigma_star))**(1/1)
+        a2_H = (((length*beta[0,:]/(np.sqrt(sigma)*(a0)**2)).sum())**(-1)*L*beta_H_star/np.sqrt(sigma_star))**(1/2)
 
-        a1_V = (((self.length*beta[1,:]/(np.sqrt(sigma)*(b0)**1)).sum())**(-1)*L*beta_V_star/np.sqrt(sigma_star))**(1/1)
-        a2_V = (((self.length*beta[1,:]/(np.sqrt(sigma)*(b0)**2)).sum())**(-1)*L*beta_V_star/np.sqrt(sigma_star))**(1/2)
+        a1_V = (((length*beta[1,:]/(np.sqrt(sigma)*(b0)**1)).sum())**(-1)*L*beta_V_star/np.sqrt(sigma_star))**(1/1)
+        a2_V = (((length*beta[1,:]/(np.sqrt(sigma)*(b0)**2)).sum())**(-1)*L*beta_V_star/np.sqrt(sigma_star))**(1/2)
         
-        a3_H = (((self.length*beta[0,:]/(np.sqrt(sigma)*(a0)**3)).sum())**(-1)*L*beta_H_star/np.sqrt(sigma_star))**(1/3)
-        a4_H = (((self.length*beta[0,:]/(np.sqrt(sigma)*(a0)**4)).sum())**(-1)*L*beta_H_star/np.sqrt(sigma_star))**(1/4)
+        a3_H = (((length*beta[0,:]/(np.sqrt(sigma)*(a0)**3)).sum())**(-1)*L*beta_H_star/np.sqrt(sigma_star))**(1/3)
+        a4_H = (((length*beta[0,:]/(np.sqrt(sigma)*(a0)**4)).sum())**(-1)*L*beta_H_star/np.sqrt(sigma_star))**(1/4)
         
-        a3_V = (((self.length*beta[1,:]/(np.sqrt(sigma)*(b0)**3)).sum())**(-1)*L*beta_V_star/np.sqrt(sigma_star))**(1/3)
-        a4_V = (((self.length*beta[1,:]/(np.sqrt(sigma)*(b0)**4)).sum())**(-1)*L*beta_V_star/np.sqrt(sigma_star))**(1/4)
+        a3_V = (((length*beta[1,:]/(np.sqrt(sigma)*(b0)**3)).sum())**(-1)*L*beta_V_star/np.sqrt(sigma_star))**(1/3)
+        a4_V = (((length*beta[1,:]/(np.sqrt(sigma)*(b0)**4)).sum())**(-1)*L*beta_V_star/np.sqrt(sigma_star))**(1/4)
         
         a1_L = min((a1_H,a1_V))
         a2_L = min((a2_H,a2_V))
         
-        return (1/sigma_star, a1_L, a2_L, a3_H, a4_H, a3_V, a4_V)
+        return (L, 1/sigma_star, beta_H_star, beta_V_star, a1_L, a2_L, a3_H, a4_H, a3_V, a4_V)
         
-    def change_values(self, start_position, end_position, x_right, y_top, 
-                      shape, rho, x_left=None, y_bottom=None):
+    def change_values(self, start_position, end_position, x_right=None, 
+                      y_top=None, shape=None, rho=None, x_left=None, 
+                      y_bottom=None, sym=True):
         """
         Change the physical parameters between start_position and end_position.
 
@@ -532,41 +575,46 @@ class PhysicalModel:
         ----------
         start_position : float
         end_position : float
-        x_right : float
+        x_right : float, optional
             Right horizontal aperture in [m].
-        y_top : float
+        y_top : float, optional
             Top vertical aperture in [m].
-        shape : str
+        shape : str, optional
             Shape of the chamber cross section (elli/circ/rect).
-        rho : float
+        rho : float, optional
             Resistivity of the chamber material [ohm.m].
         x_left : float, optional
             Left horizontal aperture in [m].
         y_bottom : float, optional
             Bottom vertical aperture in [m].
+        sym : bool, optional
+            If True, right/left and top/bottum symmetry is applied.
         """
         ind = (self.position > start_position) & (self.position < end_position)
-        self.x_right[ind] = x_right
-        self.y_top[ind] = y_top
-        
-        if x_left is None:
-            self.x_left[ind] = -1*x_right
-        else:
+        if x_right is not None:
+            self.x_right[ind] = x_right
+        if y_top is not None:
+            self.y_top[ind] = y_top
+        if x_left is not None:
             self.x_left[ind] = x_left
-        
-        if y_bottom is None:
-            self.y_bottom[ind] = -1*y_top
-        else:
+        elif (x_right is not None) and (sym is True):
+            self.x_left[ind] = -1*x_right
+        if y_bottom is not None:
             self.y_bottom[ind] = y_bottom
+        elif (y_top is not None) and (sym is True):
+            self.y_bottom[ind] = -1*y_top
         
         ind2 = ((self.position[:-1] > start_position) & 
                 (self.position[1:] < end_position))
-        self.rho[ind2] = rho
-        self.shape[ind2] = shape
+        if rho is not None:
+            self.rho[ind2] = rho
+        if shape is not None:
+            self.shape[ind2] = shape
         
-    def taper(self, start_position, end_position, x_right_start, x_right_end,
-              y_top_start, y_top_end, shape, rho, x_left_start=None, 
-              x_left_end=None, y_bottom_start=None, y_bottom_end=None):
+    def taper(self, start_position, end_position, x_right_start=None, 
+              x_right_end=None, y_top_start=None, y_top_end=None, shape=None, 
+              rho=None, x_left_start=None, x_left_end=None, 
+              y_bottom_start=None, y_bottom_end=None, sym=True):
         """
         Change the physical parameters to have a tapered transition between 
         start_position and end_position.
@@ -595,28 +643,31 @@ class PhysicalModel:
             Bottom vertical aperture at the start of the taper in [m].
         y_bottom_end : float, optional
             Bottom vertical aperture at the end of the taper in [m].
+        sym : bool, optional
+            If True, right/left and top/bottum symmetry is applied.
         """
         ind = (self.position > start_position) & (self.position < end_position)
-        self.x_right[ind] = np.linspace(x_right_start, x_right_end, sum(ind))
-        self.y_top[ind] = np.linspace(y_top_start, y_top_end, sum(ind))
-        
+        if (x_right_start is not None) and (x_right_end is not None):
+            self.x_right[ind] = np.linspace(x_right_start, x_right_end, sum(ind))
+            if sym is True:
+                self.x_left[ind] = -1*np.linspace(x_right_start, x_right_end, sum(ind))
+                
+        if (y_top_start is not None) and (y_top_end is not None):
+            self.y_top[ind] = np.linspace(y_top_start, y_top_end, sum(ind))
+            if sym is True:
+                self.y_bottom[ind] = -1*np.linspace(y_top_start, y_top_end, sum(ind))
+            
         if (x_left_start is not None) and (x_left_end is not None):
             self.x_left[ind] = np.linspace(x_left_start, x_left_end, sum(ind))
-        else:
-            self.x_left[ind] = -1*np.linspace(x_right_start, x_right_end, 
-                                              sum(ind))
-            
         if (y_bottom_start is not None) and (y_bottom_end is not None):
-            self.y_bottom[ind] = np.linspace(y_bottom_start, y_bottom_end, 
-                                             sum(ind))
-        else:
-            self.y_bottom[ind] = -1*np.linspace(y_top_start, y_top_end, 
-                                                sum(ind))
+            self.y_bottom[ind] = np.linspace(y_bottom_start, y_bottom_end, sum(ind))
         
-        ind2 = ((self.position[:-1] > start_position) 
-                & (self.position[1:] < end_position))
-        self.rho[ind2] = rho
-        self.shape[ind2] = shape
+        ind2 = ((self.position[:-1] > start_position) & 
+                (self.position[1:] < end_position))
+        if rho is not None:
+            self.rho[ind2] = rho
+        if shape is not None:
+            self.shape[ind2] = shape
         
     def plot_aperture(self):
         """Plot horizontal and vertical apertures."""
@@ -633,3 +684,24 @@ class PhysicalModel:
                    ylabel="Vertical aperture [mm]")
         axs[1].legend(["Top","Bottom"])
         
+        return (fig, axs)
+    
+    def get_aperture(self, s):
+        self.xp = interp1d(self.position, self.x_right, kind='linear')
+        self.xm = interp1d(self.position, self.x_left, kind='linear')
+        self.yp = interp1d(self.position, self.y_top, kind='linear')
+        self.ym = interp1d(self.position, self.y_bottom, kind='linear')
+        aperture = np.array([self.xp(s),
+                             self.xm(s),
+                             self.yp(s),
+                             self.ym(s)])
+        return aperture
+    
+    def plot_resistivity(self):
+        """Plot resistivity along the ring."""
+        fig, ax = plt.subplots(1)
+        ax.plot(self.position[1:], self.rho)
+        ax.set(xlabel="Longitudinal position [m]", 
+                   ylabel="Resistivity [ohm.m]")
+        
+        return (fig, ax)
