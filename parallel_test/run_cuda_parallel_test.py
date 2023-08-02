@@ -62,7 +62,7 @@ ring = Synchrotron(h=h, optics=optics, particle=particle, L=L, E0=E0, ac=ac,
 mp_number = int(4e4) # It should be at least greater than or equal to 175.
 Vc = 3.5e6
 
-turns = int(1) #int(3e4)
+turns = int(3e4) #int(3e4)
 turns_lrrw = int(20)
 n_bin = int(100)
 
