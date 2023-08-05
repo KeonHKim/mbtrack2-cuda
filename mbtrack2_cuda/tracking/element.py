@@ -1079,16 +1079,26 @@ class CUDAMap(Element):
             This is one of several kernels used to calculate the long-range resistive wall wake.
             """
             i, j = cuda.grid(2)
-            
+            local_i, local_j = cuda.threadIdx.x, cuda.threadIdx.y
+
+            tau_lrrw_shared = cuda.shared.array(threadperblock, numba.float32)
+            x_lrrw_shared = cuda.shared.array(threadperblock, numba.float32)
+            y_lrrw_shared = cuda.shared.array(threadperblock, numba.float32)
+
             if i < num_bunch and j < turns_lrrw:
-                # This operations corresponds to numpy.roll().
+                # This operation corresponds to numpy.roll(array, shift=1, axis=1).
                 idx = (j - 1) % turns_lrrw
-                device_tau_lrrw[j, i] = device_tau_lrrw[idx, i] + T0
-                device_x_lrrw[j, i] = device_x_lrrw[idx, i]
-                device_y_lrrw[j, i] = device_y_lrrw[idx, i]
+                tau_lrrw_shared[local_j, local_i] = device_tau_lrrw[idx, i] + T0
+                x_lrrw_shared[local_j, local_i] = device_x_lrrw[idx, i]
+                y_lrrw_shared[local_j, local_i] = device_y_lrrw[idx, i]
+                cuda.syncthreads()
+
+                device_tau_lrrw[j, i] = tau_lrrw_shared[local_j, local_i]
+                device_x_lrrw[j, i] = x_lrrw_shared[local_j, local_i]
+                device_y_lrrw[j, i] = y_lrrw_shared[local_j, local_i]
 
         @cuda.jit
-        def mean_ps1_kernel(device_x, device_y, device_tau, device_1st_sum_tau_lrrw, device_1st_sum_x_lrrw, device_1st_sum_y_lrrw,
+        def mean_ps1_kernel(device_tau, device_x, device_y, device_1st_sum_tau_lrrw, device_1st_sum_x_lrrw, device_1st_sum_y_lrrw,
                             num_bunch):
             """
             1st prefix sum for the calculation of mean values (tau, x, y) for each bunch
@@ -1186,7 +1196,7 @@ class CUDAMap(Element):
         
         @cuda.jit
         def get_kick_btb_kernel(num_bunch, turns_lrrw, device_tau_lrrw, device_x_lrrw, device_y_lrrw,
-                                device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau,
+                                device_sum_kick_tau, device_sum_kick_x, device_sum_kick_y,
                                 charge, amp_wl_long, amp_wt_long):
             """
             Preparation of bunch to bunch kick
@@ -1194,41 +1204,44 @@ class CUDAMap(Element):
             """
             i, j = cuda.grid(2)
 
+            # i = cuda.grid(1)
+
+            # # idx is the test bunch index.
+            # for idx in range(num_bunch):
+            #     if i < num_bunch:
+            #     # if 0 < j < turns_lrrw and i < num_bunch:
+            #         cuda.atomic.add(device_sum_kick_tau, idx, amp_wl_long / (device_tau_lrrw[1, i] - device_tau_lrrw[0, idx])**1.5*charge)
+            #         cuda.atomic.add(device_sum_kick_x, idx, amp_wt_long / sqrt(device_tau_lrrw[1, i] - device_tau_lrrw[0, idx])*device_x_lrrw[1, i]*charge)
+            #         cuda.atomic.add(device_sum_kick_y, idx, amp_wt_long / sqrt(device_tau_lrrw[1, i] - device_tau_lrrw[0, idx])*device_y_lrrw[1, i]*charge)
+
             if j < turns_lrrw and i < num_bunch:
                 # idx is the test bunch index.
                 for idx in range(num_bunch):
                     if not isnan(device_tau_lrrw[0, idx]):
                         if j == 0 and idx <= i:
-                            continue
-                        if not isnan(device_tau_lrrw[j, i]):
-                            cuda.atomic.sub(device_sum_kick_tau, idx, wl_long( amp_wl_long, (device_tau_lrrw[j, i] - device_tau_lrrw[0, idx]) )*charge)
-                            cuda.atomic.add(device_sum_kick_x, idx, wt_long( amp_wt_long, (device_tau_lrrw[j, i] - device_tau_lrrw[0, idx]) )*device_x_lrrw[j, i]*charge)
-                            cuda.atomic.add(device_sum_kick_y, idx, wt_long( amp_wt_long, (device_tau_lrrw[j, i] - device_tau_lrrw[0, idx]) )*device_y_lrrw[j, i]*charge)
-                        else:
                             pass
+                        else:
+                            if not isnan(device_tau_lrrw[j, i]):
+                                cuda.atomic.add(device_sum_kick_tau, idx, wl_long( amp_wl_long, (device_tau_lrrw[j, i] - device_tau_lrrw[0, idx]) )*charge)
+                                cuda.atomic.add(device_sum_kick_x, idx, wt_long( amp_wt_long, (device_tau_lrrw[j, i] - device_tau_lrrw[0, idx]) )*device_x_lrrw[j, i]*charge)
+                                cuda.atomic.add(device_sum_kick_y, idx, wt_long( amp_wt_long, (device_tau_lrrw[j, i] - device_tau_lrrw[0, idx]) )*device_y_lrrw[j, i]*charge)
+                            else:
+                                pass
                     else:
                         pass
-        
-            # if j < turns_lrrw and i < num_bunch:
-            #     # idx is the test bunch index.
-            #     for idx in range(num_bunch):
-            #         if j == 0 and idx <= i:
-            #             continue
-            #         cuda.atomic.sub(device_sum_kick_tau, idx, wl_long( amp_wl_long, (device_tau_lrrw[j, i] - device_tau_lrrw[0, idx]) )*charge)
-            #         cuda.atomic.add(device_sum_kick_x, idx, wt_long( amp_wt_long, (device_tau_lrrw[j, i] - device_tau_lrrw[0, idx]) )*device_x_lrrw[j, i]*charge)
-            #         cuda.atomic.add(device_sum_kick_y, idx, wt_long( amp_wt_long, (device_tau_lrrw[j, i] - device_tau_lrrw[0, idx]) )*device_y_lrrw[j, i]*charge)
 
         @cuda.jit
-        def kick_btb_kernel(device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau, device_xp, device_yp, device_delta, E0):
+        def kick_btb_kernel(num_bunch, num_particle, device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau, device_xp, device_yp, device_delta, E0):
             """
             Calculation of bunch to bunch kick
             This is one of several kernels used to calculate the long-range resistive wall wake.
             """
             i, j = cuda.grid(2)
-
-            cuda.atomic.add(device_xp, (j, i), device_sum_kick_tau[i] / E0)
-            cuda.atomic.add(device_yp, (j, i), device_sum_kick_x[i] / E0)
-            cuda.atomic.add(device_delta, (j, i), device_sum_kick_y[i] / E0)
+            
+            if j < num_particle and i < num_bunch:
+                cuda.atomic.sub(device_delta, (j, i), device_sum_kick_tau[i] / E0)
+                cuda.atomic.add(device_xp, (j, i), device_sum_kick_x[i] / E0)
+                cuda.atomic.add(device_yp, (j, i), device_sum_kick_y[i] / E0)
         
         @cuda.jit
         def monitor_ps1_kernel(device_x, device_xp, device_y, device_yp, device_tau, device_delta,
@@ -1409,6 +1422,7 @@ class CUDAMap(Element):
             num_bunch = self.ring.h
             num_particle = beam[0].mp_number
             charge = beam[0].charge
+            print(f"charge: {charge}")
             charge_per_mp = beam[0].charge_per_mp
 
             x = np.empty((num_particle, num_bunch), dtype="f4")
@@ -1446,6 +1460,10 @@ class CUDAMap(Element):
             x_lrrw = np.zeros((turns_lrrw, num_bunch), dtype="f4")
             y_lrrw = np.zeros((turns_lrrw, num_bunch), dtype="f4")
 
+            sum_kick_x = np.empty((num_bunch), dtype="f4")
+            sum_kick_y = np.empty((num_bunch), dtype="f4")
+            sum_kick_tau = np.empty((num_bunch), dtype="f4")
+
             sigma_xp = self.ring.sigma()[1]
             sigma_yp = self.ring.sigma()[3]
             tau_h = self.ring.tau[0]
@@ -1468,7 +1486,7 @@ class CUDAMap(Element):
 
             Z0 = mu_0*c
             t0 = (2*self.rho*self.radius**2/Z0)**(1/3) / c
-            print(t0)
+            print(f"t0: {t0}")
 
             if 11.7*t0 > self.ring.T1:
                 raise ValueError("The approximated wake functions are not valid.")
@@ -1499,7 +1517,7 @@ class CUDAMap(Element):
             blockpergrid_bin = (blockpergrid[0], self.n_bin // threadperblock_y + 1)
             blockpergrid_lrrw = (blockpergrid[0], turns_lrrw // threadperblock_y + 1)
 
-            rng_states = create_xoroshiro128p_states(num_particle*num_bunch, seed=1) # time.time()
+            rng_states = create_xoroshiro128p_states(num_particle*num_bunch, seed=time.time())
 
             # Calculations in GPU
             # Pin memory
@@ -1663,7 +1681,7 @@ class CUDAMap(Element):
                     if k > 0:
                         shift_tables_kernel[blockpergrid_lrrw, threadperblock, stream](num_bunch, turns_lrrw, self.ring.T0, device_tau_lrrw, device_x_lrrw, device_y_lrrw)
 
-                    mean_ps1_kernel[blockpergrid, threadperblock, stream](device_x, device_y, device_tau, device_1st_sum_tau_lrrw, device_1st_sum_x_lrrw, device_1st_sum_y_lrrw, num_bunch)
+                    mean_ps1_kernel[blockpergrid, threadperblock, stream](device_tau, device_x, device_y, device_1st_sum_tau_lrrw, device_1st_sum_x_lrrw, device_1st_sum_y_lrrw, num_bunch)
 
                     mean_ps2_kernel[blockpergrid_red, threadperblock, stream](device_1st_sum_tau_lrrw, device_1st_sum_x_lrrw, device_1st_sum_y_lrrw, device_2nd_sum_tau_lrrw,
                                                                               device_2nd_sum_x_lrrw, device_2nd_sum_y_lrrw, num_bunch)
@@ -1674,10 +1692,10 @@ class CUDAMap(Element):
                     mean_tables_kernel[blockpergrid[0], threadperblock[0], stream](self.ring.T1, num_bunch, num_particle, device_axis_sum_tau_lrrw, device_axis_sum_x_lrrw, device_axis_sum_y_lrrw,
                                                                                   device_tau_lrrw, device_x_lrrw, device_y_lrrw)
                     
-                    get_kick_btb_kernel[blockpergrid_lrrw, threadperblock, stream](num_bunch, turns_lrrw, device_tau_lrrw, device_x_lrrw, device_y_lrrw, device_sum_kick_x, device_sum_kick_y,
-                                                                                   device_sum_kick_tau, charge, amp_wl_long, amp_wt_long)
+                    get_kick_btb_kernel[blockpergrid_lrrw, threadperblock, stream](num_bunch, turns_lrrw, device_tau_lrrw, device_x_lrrw, device_y_lrrw, device_sum_kick_tau, device_sum_kick_x,
+                                                                                   device_sum_kick_y, charge, amp_wl_long, amp_wt_long)
                     
-                    kick_btb_kernel[blockpergrid, threadperblock, stream](device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau, device_xp, device_yp, device_delta, self.ring.E0)
+                    kick_btb_kernel[blockpergrid, threadperblock, stream](num_bunch, num_particle, device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau, device_xp, device_yp, device_delta, self.ring.E0)
 
                     monitor_ps1_kernel[blockpergrid, threadperblock, stream](device_x, device_xp, device_y, device_yp, device_tau, device_delta,
                                                                              device_1st_sum_x_squared, device_1st_sum_xp_squared, device_1st_sum_x_xp, device_1st_sum_y_squared,
@@ -1730,6 +1748,14 @@ class CUDAMap(Element):
 
                 device_bin_tau.copy_to_host(bin_tau, stream=stream)
 
+                device_sum_kick_x.copy_to_host(sum_kick_x, stream=stream)
+                device_sum_kick_y.copy_to_host(sum_kick_y, stream=stream)
+                device_sum_kick_tau.copy_to_host(sum_kick_tau, stream=stream)
+
+                device_tau_lrrw.copy_to_host(tau_lrrw, stream=stream)
+                device_x_lrrw.copy_to_host(x_lrrw, stream=stream)
+                device_y_lrrw.copy_to_host(y_lrrw, stream=stream)
+
                 # device_rand_xp.copy_to_host(rand_xp, stream=stream)
                 # device_rand_yp.copy_to_host(rand_yp, stream=stream)
                 # device_rand_delta.copy_to_host(rand_delta, stream=stream)
@@ -1779,6 +1805,17 @@ class CUDAMap(Element):
             # print(f"wp_y: \n {wp_y[:, num_bunch-1]}")
 
             # print(bin_tau)
+            
+            print(f"sum_kick_tau: \n {sum_kick_tau}")
+            print(f"sum_kick_x: \n {sum_kick_x}")
+            print(f"sum_kick_y: \n {sum_kick_y}")
+            
+            # print(f"tau_lrrw: \n {tau_lrrw[0, :]}")
+            # print(f"x_lrrw: \n {x_lrrw[0, :]}")
+            # print(f"y_lrrw: \n {y_lrrw[0, :]}")
+            # print(f"tau_lrrw: \n {tau_lrrw[1, :]}")
+            # print(f"x_lrrw: \n {x_lrrw[1, :]}")
+            # print(f"y_lrrw: \n {y_lrrw[1, :]}")
             
             os.chdir("/home/alphaover2pi/projects/mbtrack2-cuda/")
 
