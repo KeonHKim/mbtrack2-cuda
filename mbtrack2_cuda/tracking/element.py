@@ -16,7 +16,6 @@ from abc import ABCMeta, abstractmethod
 from functools import wraps
 from copy import deepcopy
 from mbtrack2_cuda.tracking.particles import Beam
-import matplotlib.pyplot as plt
 
 class Element(metaclass=ABCMeta):
     """
@@ -1960,31 +1959,6 @@ class CUDAMap(Element):
             # print(axis_min_tau)
             # print(2*half_d_bin_tau)
             # print(t[:, 0])
-            
-            # plt.plot(t, dip_x)
-            # plt.title("Dipole Moment x", fontsize=15)
-            # plt.legend(["dip_x"], fontsize=15)
-            # plt.show()
-
-            # plt.plot(t, dip_y)
-            # plt.title("Dipole Moment y", fontsize=15)
-            # plt.legend(["dip_y"], fontsize=15)
-            # plt.show()
-
-            # plt.plot(t, wp_tau)
-            # plt.title("Wake potential", fontsize=15)
-            # plt.legend(["Wp_tau"], fontsize=15)
-            # plt.show()
-
-            # plt.plot(t, wp_x)
-            # plt.title("Wake potential", fontsize=15)
-            # plt.legend(["Wp_x"], fontsize=15)
-            # plt.show()
-
-            # plt.plot(t, wp_y)
-            # plt.title("Wake potential", fontsize=15)
-            # plt.legend(["Wp_y"], fontsize=15)
-            # plt.show()
 
         else:
             raise ValueError("To perform GPU calculations, CUDA_PARALLEL must be enabled in the mybeam.init_beam.")
