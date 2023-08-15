@@ -572,7 +572,88 @@ class CUDAMap(Element):
             """
 
             return ( amp_wt_long / sqrt(t) )
-                    
+        
+        @cuda.jit
+        def initialize_gm_kernel(device_2nd_min_tau, device_2nd_max_tau, device_axis_min_tau, device_axis_max_tau,
+                                 device_axis_sum_x_squared, device_axis_sum_xp_squared, device_axis_sum_x_xp,
+                                 device_axis_sum_y_squared, device_axis_sum_yp_squared, device_axis_sum_y_yp,
+                                 device_axis_sum_tau_squared, device_axis_sum_delta_squared, device_axis_sum_tau_delta,
+                                 device_axis_sum_tau, device_axis_sum_delta, device_density_profile, device_profile,
+                                 device_sum_bin_x, device_sum_bin_y, device_wl_avg, device_wt_avg, device_wp_x, device_wp_y,
+                                 device_wp_tau, device_axis_sum_x_lrrw, device_axis_sum_y_lrrw, device_axis_sum_tau_lrrw,
+                                 device_axis_sum_charge_lrrw, device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau,
+                                 num_bunch, n_bin, k):
+            """
+            Initialize global memory arrays
+
+            """
+            i, j = cuda.grid(2)
+
+            if k == 0:
+                if i < num_bunch:
+                    device_axis_min_tau[i] = device_2nd_min_tau[0, i]
+                    device_axis_max_tau[i] = device_2nd_max_tau[0, i]
+                    device_axis_sum_x_squared[i] = 0
+                    device_axis_sum_xp_squared[i] = 0
+                    device_axis_sum_x_xp[i] = 0
+                    device_axis_sum_y_squared[i] = 0
+                    device_axis_sum_yp_squared[i] = 0
+                    device_axis_sum_y_yp[i] = 0
+                    device_axis_sum_tau_squared[i] = 0
+                    device_axis_sum_delta_squared[i] = 0
+                    device_axis_sum_tau_delta[i] = 0
+                    device_axis_sum_tau[i] = 0
+                    device_axis_sum_delta[i] = 0
+                    device_axis_sum_x_lrrw[i] = 0
+                    device_axis_sum_y_lrrw[i] = 0
+                    device_axis_sum_tau_lrrw[i] = 0
+                    device_axis_sum_charge_lrrw[i] = 0
+                    device_sum_kick_x[i] = 0
+                    device_sum_kick_y[i] = 0
+                    device_sum_kick_tau[i] = 0
+                    if j < n_bin:
+                        device_profile[j, i] = 0
+                        device_density_profile[j, i] = 0
+                        device_sum_bin_x[j, i] = 0
+                        device_sum_bin_y[j, i] = 0
+                        device_wp_x[j, i] = 0
+                        device_wp_y[j, i] = 0
+                        device_wp_tau[j, i] = 0
+                    if (j < 2*n_bin-1):
+                        device_wl_avg[j, i] = 0
+                        device_wt_avg[j, i] = 0
+            
+            else:
+                if i < num_bunch:
+                    device_axis_min_tau[i] = device_2nd_min_tau[0, i]
+                    device_axis_max_tau[i] = device_2nd_max_tau[0, i]
+                    device_axis_sum_x_squared[i] = 0
+                    device_axis_sum_xp_squared[i] = 0
+                    device_axis_sum_x_xp[i] = 0
+                    device_axis_sum_y_squared[i] = 0
+                    device_axis_sum_yp_squared[i] = 0
+                    device_axis_sum_y_yp[i] = 0
+                    device_axis_sum_tau_squared[i] = 0
+                    device_axis_sum_delta_squared[i] = 0
+                    device_axis_sum_tau_delta[i] = 0
+                    device_axis_sum_tau[i] = 0
+                    device_axis_sum_delta[i] = 0
+                    device_axis_sum_x_lrrw[i] = 0
+                    device_axis_sum_y_lrrw[i] = 0
+                    device_axis_sum_tau_lrrw[i] = 0
+                    device_axis_sum_charge_lrrw[i] = 0
+                    device_sum_kick_x[i] = 0
+                    device_sum_kick_y[i] = 0
+                    device_sum_kick_tau[i] = 0
+                    if j < n_bin:
+                        device_profile[j, i] = 0
+                        device_density_profile[j, i] = 0
+                        device_sum_bin_x[j, i] = 0
+                        device_sum_bin_y[j, i] = 0
+                        device_wp_x[j, i] = 0
+                        device_wp_y[j, i] = 0
+                        device_wp_tau[j, i] = 0
+
         @cuda.jit
         def map_kernel(device_x, device_xp, device_y, device_yp, device_tau, device_delta,
                        U0, E0, ac, T0, omega1, tau_h, tau_v, tau_l, dispersion_x, dispersion_xp,
@@ -669,10 +750,11 @@ class CUDAMap(Element):
             j = cuda.grid(1)
 
             if j < num_particle:
-                device_rand_xp[j] = xoroshiro128p_normal_float32(rng_states_1, j + num_particle * k)
-                device_rand_yp[j] = xoroshiro128p_normal_float32(rng_states_1, j + num_particle * k)
-                device_rand_delta[j] = xoroshiro128p_normal_float32(rng_states_1, j + num_particle * k)
-
+                idx = j + num_particle * k
+                device_rand_xp[j] = xoroshiro128p_normal_float32(rng_states_1, idx)
+                device_rand_yp[j] = xoroshiro128p_normal_float32(rng_states_1, idx)
+                device_rand_delta[j] = xoroshiro128p_normal_float32(rng_states_1, idx)
+        
         @cuda.jit
         def sr_kernel(num_bunch, num_particle, T0, tau_h, tau_v, tau_l, sigma_xp, sigma_yp, sigma_delta,
                       device_xp, device_yp, device_delta, device_rand_xp, device_rand_yp, device_rand_delta):
@@ -690,87 +772,6 @@ class CUDAMap(Element):
                                 * device_rand_yp[j])
                 cuda.atomic.add(device_delta, (j, i), 2*sigma_delta*sqrt(T0*num_particle/(tau_l*(num_particle-1)))
                                 * device_rand_delta[j])
-        
-        @cuda.jit
-        def initialize_gm_kernel(device_2nd_min_tau, device_2nd_max_tau, device_axis_min_tau, device_axis_max_tau,
-                                 device_axis_sum_x_squared, device_axis_sum_xp_squared, device_axis_sum_x_xp,
-                                 device_axis_sum_y_squared, device_axis_sum_yp_squared, device_axis_sum_y_yp,
-                                 device_axis_sum_tau_squared, device_axis_sum_delta_squared, device_axis_sum_tau_delta,
-                                 device_axis_sum_tau, device_axis_sum_delta, device_density_profile, device_profile,
-                                 device_sum_bin_x, device_sum_bin_y, device_wl_avg, device_wt_avg, device_wp_x, device_wp_y,
-                                 device_wp_tau, device_axis_sum_x_lrrw, device_axis_sum_y_lrrw, device_axis_sum_tau_lrrw,
-                                 device_axis_sum_charge_lrrw, device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau,
-                                 num_bunch, n_bin, k):
-            """
-            Initialize global memory arrays
-
-            """
-            i, j = cuda.grid(2)
-
-            if k == 0:
-                if i < num_bunch:
-                    device_axis_min_tau[i] = device_2nd_min_tau[0, i]
-                    device_axis_max_tau[i] = device_2nd_max_tau[0, i]
-                    device_axis_sum_x_squared[i] = 0
-                    device_axis_sum_xp_squared[i] = 0
-                    device_axis_sum_x_xp[i] = 0
-                    device_axis_sum_y_squared[i] = 0
-                    device_axis_sum_yp_squared[i] = 0
-                    device_axis_sum_y_yp[i] = 0
-                    device_axis_sum_tau_squared[i] = 0
-                    device_axis_sum_delta_squared[i] = 0
-                    device_axis_sum_tau_delta[i] = 0
-                    device_axis_sum_tau[i] = 0
-                    device_axis_sum_delta[i] = 0
-                    device_axis_sum_x_lrrw[i] = 0
-                    device_axis_sum_y_lrrw[i] = 0
-                    device_axis_sum_tau_lrrw[i] = 0
-                    device_axis_sum_charge_lrrw[i] = 0
-                    device_sum_kick_x[i] = 0
-                    device_sum_kick_y[i] = 0
-                    device_sum_kick_tau[i] = 0
-                    if j < n_bin:
-                        device_profile[j, i] = 0
-                        device_density_profile[j, i] = 0
-                        device_sum_bin_x[j, i] = 0
-                        device_sum_bin_y[j, i] = 0
-                        device_wp_x[j, i] = 0
-                        device_wp_y[j, i] = 0
-                        device_wp_tau[j, i] = 0
-                    if (j < 2*n_bin-1):
-                        device_wl_avg[j, i] = 0
-                        device_wt_avg[j, i] = 0
-            
-            else:
-                if i < num_bunch:
-                    device_axis_min_tau[i] = device_2nd_min_tau[0, i]
-                    device_axis_max_tau[i] = device_2nd_max_tau[0, i]
-                    device_axis_sum_x_squared[i] = 0
-                    device_axis_sum_xp_squared[i] = 0
-                    device_axis_sum_x_xp[i] = 0
-                    device_axis_sum_y_squared[i] = 0
-                    device_axis_sum_yp_squared[i] = 0
-                    device_axis_sum_y_yp[i] = 0
-                    device_axis_sum_tau_squared[i] = 0
-                    device_axis_sum_delta_squared[i] = 0
-                    device_axis_sum_tau_delta[i] = 0
-                    device_axis_sum_tau[i] = 0
-                    device_axis_sum_delta[i] = 0
-                    device_axis_sum_x_lrrw[i] = 0
-                    device_axis_sum_y_lrrw[i] = 0
-                    device_axis_sum_tau_lrrw[i] = 0
-                    device_axis_sum_charge_lrrw[i] = 0
-                    device_sum_kick_x[i] = 0
-                    device_sum_kick_y[i] = 0
-                    device_sum_kick_tau[i] = 0
-                    if j < n_bin:
-                        device_profile[j, i] = 0
-                        device_density_profile[j, i] = 0
-                        device_sum_bin_x[j, i] = 0
-                        device_sum_bin_y[j, i] = 0
-                        device_wp_x[j, i] = 0
-                        device_wp_y[j, i] = 0
-                        device_wp_tau[j, i] = 0
 
         @cuda.jit
         def mm_pr1_kernel(device_tau, device_1st_min_tau, device_1st_max_tau, num_bunch):
@@ -1558,6 +1559,10 @@ class CUDAMap(Element):
             blockpergrid_bin = (blockpergrid[0], self.n_bin // threadperblock_y + 1)
             blockpergrid_lrrw = (blockpergrid[0], turns_lrrw // threadperblock_y + 1)
 
+            seed1 = os.getpid()
+            # seed2 = os.getpid()+1
+            # seed3 = os.getpid()+2
+
             # Calculations in GPU
             # Pin memory
             with cuda.pinned(x, xp, y, yp, tau, delta, charge, x_lrrw, y_lrrw, tau_lrrw, charge_lrrw):
@@ -1565,9 +1570,9 @@ class CUDAMap(Element):
                 # Create a CUDA stream
                 stream = cuda.stream()
 
-                rng_states_1 = create_xoroshiro128p_states(num_particle*turns, seed=os.getpid(), stream=stream)
-                #create_xoroshiro128p_states(num_particle*turns, seed=os.getpid()+1, stream=stream)
-                #create_xoroshiro128p_states(num_particle*turns, seed=os.getpid()+2, stream=stream)
+                rng_states_1 = create_xoroshiro128p_states(num_particle*turns, seed=seed1, stream=stream)
+                #create_xoroshiro128p_states(num_particle*turns, seed=seed2, stream=stream)
+                #create_xoroshiro128p_states(num_particle*turns, seed=seed3, stream=stream)
 
                 device_x = cuda.to_device(x, stream=stream)
                 device_xp = cuda.to_device(xp, stream=stream)
@@ -1682,6 +1687,16 @@ class CUDAMap(Element):
                 device_energy_spread = cuda.device_array_like(bunch_length, stream=stream)
                 
                 for k in range(turns):
+                    initialize_gm_kernel[blockpergrid_pad, threadperblock, stream](device_2nd_min_tau, device_2nd_max_tau, device_axis_min_tau, device_axis_max_tau,
+                                                                                   device_axis_sum_x_squared, device_axis_sum_xp_squared, device_axis_sum_x_xp,
+                                                                                   device_axis_sum_y_squared, device_axis_sum_yp_squared, device_axis_sum_y_yp,
+                                                                                   device_axis_sum_tau_squared, device_axis_sum_delta_squared, device_axis_sum_tau_delta,
+                                                                                   device_axis_sum_tau, device_axis_sum_delta, device_density_profile, device_profile,
+                                                                                   device_sum_bin_x, device_sum_bin_y, device_wl_avg, device_wt_avg, device_wp_x, device_wp_y,
+                                                                                   device_wp_tau, device_axis_sum_x_lrrw, device_axis_sum_y_lrrw, device_axis_sum_tau_lrrw,
+                                                                                   device_axis_sum_charge_lrrw, device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau,
+                                                                                   num_bunch, self.n_bin, k)
+                    
                     map_kernel[blockpergrid, threadperblock, stream](device_x, device_xp, device_y, device_yp, device_tau, device_delta,
                                                                      self.ring.U0, self.ring.E0, self.ring.ac, self.ring.T0,
                                                                      self.ring.omega1, tau_h, tau_v, tau_l, dispersion_x, dispersion_xp,
@@ -1694,16 +1709,6 @@ class CUDAMap(Element):
 
                         sr_kernel[blockpergrid, threadperblock, stream](num_bunch, num_particle, self.ring.T0, tau_h, tau_v, tau_l, sigma_xp, sigma_yp, self.ring.sigma_delta,
                                                                     device_xp, device_yp, device_delta, device_rand_xp, device_rand_yp, device_rand_delta)
-                    
-                    initialize_gm_kernel[blockpergrid_pad, threadperblock, stream](device_2nd_min_tau, device_2nd_max_tau, device_axis_min_tau, device_axis_max_tau,
-                                                                                   device_axis_sum_x_squared, device_axis_sum_xp_squared, device_axis_sum_x_xp,
-                                                                                   device_axis_sum_y_squared, device_axis_sum_yp_squared, device_axis_sum_y_yp,
-                                                                                   device_axis_sum_tau_squared, device_axis_sum_delta_squared, device_axis_sum_tau_delta,
-                                                                                   device_axis_sum_tau, device_axis_sum_delta, device_density_profile, device_profile,
-                                                                                   device_sum_bin_x, device_sum_bin_y, device_wl_avg, device_wt_avg, device_wp_x, device_wp_y,
-                                                                                   device_wp_tau, device_axis_sum_x_lrrw, device_axis_sum_y_lrrw, device_axis_sum_tau_lrrw,
-                                                                                   device_axis_sum_charge_lrrw, device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau,
-                                                                                   num_bunch, self.n_bin, k)
                     
                     mm_pr1_kernel[blockpergrid, threadperblock, stream](device_tau, device_1st_min_tau, device_1st_max_tau, num_bunch)
 
@@ -1736,27 +1741,27 @@ class CUDAMap(Element):
                     kick_sb_kernel[blockpergrid, threadperblock, stream](self.ring.E0, num_bunch, num_particle, charge_per_bunch, device_wp_x_interp, device_wp_y_interp, device_wp_tau_interp,
                                                                          device_xp, device_yp, device_delta)
                     
-                    if k > 0:
-                        shift_tables_kernel[blockpergrid_lrrw, threadperblock, stream](num_bunch, turns_lrrw, self.ring.T0, device_tau_lrrw, device_x_lrrw, device_y_lrrw, device_charge_lrrw)
+                    # if k > 0:
+                    #     shift_tables_kernel[blockpergrid_lrrw, threadperblock, stream](num_bunch, turns_lrrw, self.ring.T0, device_tau_lrrw, device_x_lrrw, device_y_lrrw, device_charge_lrrw)
 
-                    mean_ps1_kernel[blockpergrid, threadperblock, stream](device_tau, device_x, device_y, device_charge, device_1st_sum_tau_lrrw, device_1st_sum_x_lrrw, device_1st_sum_y_lrrw,
-                                                                          device_1st_sum_charge_lrrw, num_bunch)
+                    # mean_ps1_kernel[blockpergrid, threadperblock, stream](device_tau, device_x, device_y, device_charge, device_1st_sum_tau_lrrw, device_1st_sum_x_lrrw, device_1st_sum_y_lrrw,
+                    #                                                       device_1st_sum_charge_lrrw, num_bunch)
 
-                    mean_ps2_kernel[blockpergrid_red, threadperblock, stream](device_1st_sum_tau_lrrw, device_1st_sum_x_lrrw, device_1st_sum_y_lrrw, device_1st_sum_charge_lrrw,
-                                                                              device_2nd_sum_tau_lrrw, device_2nd_sum_x_lrrw, device_2nd_sum_y_lrrw, device_2nd_sum_charge_lrrw,
-                                                                              num_bunch)
+                    # mean_ps2_kernel[blockpergrid_red, threadperblock, stream](device_1st_sum_tau_lrrw, device_1st_sum_x_lrrw, device_1st_sum_y_lrrw, device_1st_sum_charge_lrrw,
+                    #                                                           device_2nd_sum_tau_lrrw, device_2nd_sum_x_lrrw, device_2nd_sum_y_lrrw, device_2nd_sum_charge_lrrw,
+                    #                                                           num_bunch)
 
-                    mean_as_kernel[blockpergrid[0], threadperblock[0], stream](device_2nd_sum_tau_lrrw, device_2nd_sum_x_lrrw, device_2nd_sum_y_lrrw, device_2nd_sum_charge_lrrw,
-                                                                               device_axis_sum_tau_lrrw, device_axis_sum_x_lrrw, device_axis_sum_y_lrrw, device_axis_sum_charge_lrrw,
-                                                                               num_bunch, num_red)
+                    # mean_as_kernel[blockpergrid[0], threadperblock[0], stream](device_2nd_sum_tau_lrrw, device_2nd_sum_x_lrrw, device_2nd_sum_y_lrrw, device_2nd_sum_charge_lrrw,
+                    #                                                            device_axis_sum_tau_lrrw, device_axis_sum_x_lrrw, device_axis_sum_y_lrrw, device_axis_sum_charge_lrrw,
+                    #                                                            num_bunch, num_red)
 
-                    mean_tables_kernel[blockpergrid[0], threadperblock[0], stream](self.ring.T1, num_bunch, num_particle, device_axis_sum_tau_lrrw, device_axis_sum_x_lrrw, device_axis_sum_y_lrrw,
-                                                                                   device_axis_sum_charge_lrrw, device_tau_lrrw, device_x_lrrw, device_y_lrrw, device_charge_lrrw)
+                    # mean_tables_kernel[blockpergrid[0], threadperblock[0], stream](self.ring.T1, num_bunch, num_particle, device_axis_sum_tau_lrrw, device_axis_sum_x_lrrw, device_axis_sum_y_lrrw,
+                    #                                                                device_axis_sum_charge_lrrw, device_tau_lrrw, device_x_lrrw, device_y_lrrw, device_charge_lrrw)
                     
-                    get_kick_btb_kernel[blockpergrid_lrrw, threadperblock, stream](num_bunch, turns_lrrw, device_tau_lrrw, device_x_lrrw, device_y_lrrw, device_sum_kick_tau, device_sum_kick_x,
-                                                                                   device_sum_kick_y, device_charge_lrrw, amp_wl_long, amp_wt_long)
+                    # get_kick_btb_kernel[blockpergrid_lrrw, threadperblock, stream](num_bunch, turns_lrrw, device_tau_lrrw, device_x_lrrw, device_y_lrrw, device_sum_kick_tau, device_sum_kick_x,
+                    #                                                                device_sum_kick_y, device_charge_lrrw, amp_wl_long, amp_wt_long)
                     
-                    kick_btb_kernel[blockpergrid, threadperblock, stream](num_bunch, num_particle, device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau, device_xp, device_yp, device_delta, self.ring.E0)
+                    # kick_btb_kernel[blockpergrid, threadperblock, stream](num_bunch, num_particle, device_sum_kick_x, device_sum_kick_y, device_sum_kick_tau, device_xp, device_yp, device_delta, self.ring.E0)
 
                     monitor_ps1_kernel[blockpergrid, threadperblock, stream](device_x, device_xp, device_y, device_yp, device_tau, device_delta,
                                                                              device_1st_sum_x_squared, device_1st_sum_xp_squared, device_1st_sum_x_xp, device_1st_sum_y_squared,
@@ -1907,15 +1912,25 @@ class CUDAMap(Element):
             filename_bunch_length_l = "gpu_bunch_length_l.bin"
             filename_energy_spread_l = "gpu_energy_spread_l.bin"
             with open(filename_beam_emitX_l, "wb") as file:
-                pickle.dump(beam_emitX[:, num_bunch-45], file)
+                pickle.dump(beam_emitX[:, num_bunch-1], file)
             with open(filename_beam_emitY_l, "wb") as file:
-                pickle.dump(beam_emitY[:, num_bunch-45], file)
+                pickle.dump(beam_emitY[:, num_bunch-1], file)
             with open(filename_beam_emitS_l, "wb") as file:
-                pickle.dump(beam_emitS[:, num_bunch-45], file)
+                pickle.dump(beam_emitS[:, num_bunch-1], file)
             with open(filename_bunch_length_l, "wb") as file:
-                pickle.dump(bunch_length[:, num_bunch-45], file)
+                pickle.dump(bunch_length[:, num_bunch-1], file)
             with open(filename_energy_spread_l, "wb") as file:
-                pickle.dump(energy_spread[:, num_bunch-45], file)
+                pickle.dump(energy_spread[:, num_bunch-1], file)
+            # with open(filename_beam_emitX_l, "wb") as file:
+            #     pickle.dump(beam_emitX[:, num_bunch-45], file)
+            # with open(filename_beam_emitY_l, "wb") as file:
+            #     pickle.dump(beam_emitY[:, num_bunch-45], file)
+            # with open(filename_beam_emitS_l, "wb") as file:
+            #     pickle.dump(beam_emitS[:, num_bunch-45], file)
+            # with open(filename_bunch_length_l, "wb") as file:
+            #     pickle.dump(bunch_length[:, num_bunch-45], file)
+            # with open(filename_energy_spread_l, "wb") as file:
+            #     pickle.dump(energy_spread[:, num_bunch-45], file)
 
             # filename_t = "t.bin"
             # filename_wp_tau = "wp_tau.bin"
@@ -1948,13 +1963,13 @@ class CUDAMap(Element):
             filename_wp_x_interp_l = "wp_x_interp_l.bin"
             filename_wp_y_interp_l = "wp_y_interp_l.bin"
             with open(filename_tau_gpu_l, "wb") as file:
-                pickle.dump(tau[:, num_bunch-45], file)
+                pickle.dump(tau[:, num_bunch-1], file)
             with open(filename_wp_tau_interp_l, "wb") as file:
-                pickle.dump(wp_tau_interp[:, num_bunch-45], file)
+                pickle.dump(wp_tau_interp[:, num_bunch-1], file)
             with open(filename_wp_x_interp_l, "wb") as file:
-                pickle.dump(wp_x_interp[:, num_bunch-45], file)
+                pickle.dump(wp_x_interp[:, num_bunch-1], file)
             with open(filename_wp_y_interp_l, "wb") as file:
-                pickle.dump(wp_y_interp[:, num_bunch-45], file)
+                pickle.dump(wp_y_interp[:, num_bunch-1], file)
 
             # print(axis_min_tau)
             # print(2*half_d_bin_tau)
