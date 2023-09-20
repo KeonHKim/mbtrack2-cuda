@@ -305,7 +305,6 @@ class Bunch:
             cov[4,4] = sigma_0**2
             cov[5,5] = sigma_delta**2
             
-        np.random.seed(1)
         values = np.random.multivariate_normal(mean, cov, size=self.mp_number)
         self.particles["x"] = values[:,0]
         self.particles["xp"] = values[:,1]
@@ -314,7 +313,7 @@ class Bunch:
         self.particles["tau"] = values[:,4]
         self.particles["delta"] = values[:,5]
         
-    def binning(self, dimension="tau", n_bin=75):
+    def binning(self, dimension="tau", n_bin=90):
         """
         Bin macro-particles.
 
@@ -727,7 +726,7 @@ class Beam:
         else:
             for bunch in self.not_empty:
                 bunch.init_gaussian()
-    
+
     def update_filling_pattern(self):
         """Update the beam filling pattern."""
         filling_pattern = []
