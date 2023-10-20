@@ -305,6 +305,7 @@ class Bunch:
             cov[4,4] = sigma_0**2
             cov[5,5] = sigma_delta**2
             
+        np.random.seed(1)
         values = np.random.multivariate_normal(mean, cov, size=self.mp_number)
         self.particles["x"] = values[:,0]
         self.particles["xp"] = values[:,1]
@@ -313,7 +314,7 @@ class Bunch:
         self.particles["tau"] = values[:,4]
         self.particles["delta"] = values[:,5]
         
-    def binning(self, dimension="tau", n_bin=90):
+    def binning(self, dimension="tau", n_bin=80):
         """
         Bin macro-particles.
 
@@ -822,7 +823,7 @@ class Beam:
     
     def mpi_init(self):
         """Switch on MPI parallelisation and initialise a Mpi object"""
-        from mbtrack2.tracking.parallel import Mpi
+        from mbtrack2_cuda.tracking.parallel import Mpi
         self.mpi = Mpi(self.filling_pattern)
         self.mpi_switch = True
         
