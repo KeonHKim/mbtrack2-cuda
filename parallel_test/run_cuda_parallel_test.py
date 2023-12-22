@@ -41,7 +41,7 @@ L = 799.297 # Ring circumference in [m].
 E0 = 4e9 # Nominal (total) energy of the ring in [eV].
 particle = Electron() # Particle considered.
 ac = 7.857e-5 # Momentum compaction factor.
-U0 = 1.8e6 #1.8e6 # Energy loss per turn in [eV].
+U0 = 1.01e6 # Energy loss per turn in [eV].
 tau = np.array([11.07e-3, 21.12e-3, 19.34e-3]) # Horizontal, vertical and longitudinal damping times in [s].
 tune = np.array([68.18, 23.26]) # Horizontal and vertical tunes.
 emit = np.array([62e-12, 6.2e-12]) # Horizontal and vertical equilibrium emittance in [m.rad].
@@ -69,16 +69,18 @@ m1 = 1
 m2 = 3
 Vc1 = 2.7e6 # [V]
 Vc2 = np.sqrt(1/m2**2-(ring.U0/Vc1)**2*(1/(m2**2-1))) * Vc1 # [V]
-theta1 = np.arccos(m2**2/(m2**2-1)*ring.U0/Vc1) # np.arccos(ring.U0/Vc1)
+theta1 = np.arccos(ring.U0/Vc1) # np.arccos(m2**2/(m2**2-1)*ring.U0/Vc1) # np.arccos(ring.U0/Vc1)
 theta2 = -1*np.arccos((1-m2**2/(m2**2-1))*ring.U0/Vc2) # (0.01)*np.pi/180 - 0.5*np.pi # () corresponds to degree
 
-turns_lrrw = int(22) # Number of turns to consider for the long range wakes
+turns_lrrw = int(50) # Number of turns to consider for the long range wakes
 
 # 80 is enough for 100,000 macro-particles.
 # 50 is enough for 50,000 macro-particles.
 num_bin_gpu = int(80)
 num_bin_cpu = num_bin_gpu
 
+# After the binning the macro-particles within a bunch, we need to increase the # of bins for self-bunch RW calculations.
+# 1000 is enough for most cases.
 num_bin_gpu_interp = int(1000)
 
 # Geometry and beam
@@ -90,6 +92,7 @@ MCh = RFCavity(ring, m=m2, Vc=Vc2, theta=theta2)
 
 mybeam = Beam(ring)
 
+# The zeroth index must be filled.
 filling_pattern = np.zeros(ring.h)
 n_fill = h - gap
 step = 1
@@ -101,14 +104,14 @@ for _ in range(n_fill):
 mybeam.init_beam(filling_pattern, mp_per_bunch=mp_number, mpi=False, cuda=CUDA_PARALLEL)
 
 #Resistive Wall: Resistive wall impedance
+
 rho_Cu = 1.68e-8 # Copper's resistivity in (Ohm.m)
 rho_Al = 3.32e-8 # A6063
-# # 2.82e-8 for regular Al
 rho_SS = 6.9e-7
 Z0 = mu_0*c
-radius_x = 12e-3
-radius_y = 9e-3
-length = L 
+radius_x = 9.5e-3
+radius_y = 8e-3
+length = L
 
 wake_length = 100e-12
 freq_lim = int(100e9)
@@ -117,8 +120,8 @@ freq = np.linspace(1, freq_lim, freq_num)
 t = np.linspace(0, wake_length, freq_num)
 
 ## New
-radius_y_al = 9e-3
-radius_x_al = 12e-3
+radius_y_al = 8e-3
+radius_x_al = 9.5e-3
 radius_y_ss = radius_y_al
 radius_x_ss = radius_x_al
 radius_y_ivu = 2.5e-3
@@ -127,7 +130,7 @@ radius_y_epu = 7.5e-3 # circular
 length_ivu = 60
 length_epu = 15.208
 length_ss = 100
-length_al = L - length_ivu - length_epu - length_ss
+length_al = L #- length_ivu - length_epu - length_ss
 
 rw_al = CircularResistiveWall(t, freq, length=length_al, rho=rho_Al, radius=radius_y_al, exact=True)
 rw_ss = CircularResistiveWall(t, freq, length=length_ss, rho=rho_SS, radius=radius_y_ss, exact=True)
@@ -170,9 +173,20 @@ y3_lrrw = ( (Y_al[2]*length_al/radius_y_al**3 + np.sqrt(rho_SS/rho_Al)*Y_ss[2]*l
         + np.sqrt(rho_Cu/rho_Al)*Y_ivu[2]*length_ivu/radius_y_ivu**3
         + np.sqrt(rho_Cu/rho_Al)*length_epu/radius_y_epu**3) / L)**(-1/3) # Vertical effective radius of the 3rd power in [m], as Eq.27 in [1]. The default is radius.
 
+print(y3_lrrw )
+
+# rw = CircularResistiveWall(t, freq, length=L, rho=rho_Al, radius=radius_y, exact=True)
+# Wlong = rw.Wlong.data["real"].to_numpy()
+# Wxdip = rw.Wxdip.data["real"].to_numpy()
+# Wydip = rw.Wydip.data["real"].to_numpy()
+# Wlong_integ = np.cumsum(Wlong)
+# Wxdip_integ = np.cumsum(Wxdip)
+# Wydip_integ = np.cumsum(Wydip)
+# print(Wlong_integ)
+# print(Wxdip_integ)
 #GPU Calculations
-cumap = CUDAMap(ring, Vc1=Vc1, Vc2=Vc2, m1=m1, m2=m2, theta1=theta1, theta2=theta2,
-                num_bin=num_bin_gpu, num_bin_interp=num_bin_gpu_interp, rho=rho_Al,
+cumap = CUDAMap(ring, filling_pattern=filling_pattern, Vc1=Vc1, Vc2=Vc2, m1=m1, m2=m2, theta1=theta1, theta2=theta2,
+                num_bin=num_bin_gpu, num_bin_interp=num_bin_gpu_interp, rho=rho_Cu,
                 radius_x=radius_x, radius_y=radius_y, length=length, wake_function_time=t,
                 wake_function_integ_wl=rw_total_Wlong_integ, wake_function_integ_wtx=rw_total_Wxdip_integ,
                 wake_function_integ_wty=rw_total_Wydip_integ, r_lrrw=r_lrrw, x3_lrrw=x3_lrrw,
@@ -189,7 +203,7 @@ print('Turns: ' + str(turns))
 curm_ti = int(10)
 
 for i in tqdm(range(1), desc='GPU Processing'):
-    cumap.track(mybeam, turns, turns_lrrw, curm_ti, gap, culm=True, cusr=False, cutm=True, curfmc=True, curfhc=False, culrrw=True,
-                cuelliptic=False, curm=False, cugeneralwake=False)
+    cumap.track(mybeam, turns, turns_lrrw, curm_ti, gap, culm=True, cusr=False, cutm=True, curfmc=True, curfhc=False,
+                cusrrw=False, culrrw=True, cuelliptic=False, curm=False, cugeneralwake=False)
 
 print("All tracking has been done.")
