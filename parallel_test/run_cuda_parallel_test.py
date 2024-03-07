@@ -184,13 +184,14 @@ print(y3_lrrw )
 # Wydip_integ = np.cumsum(Wydip)
 # print(Wlong_integ)
 # print(Wxdip_integ)
+
 #GPU Calculations
 cumap = CUDAMap(ring, filling_pattern=filling_pattern, Vc1=Vc1, Vc2=Vc2, m1=m1, m2=m2, theta1=theta1, theta2=theta2,
                 num_bin=num_bin_gpu, num_bin_interp=num_bin_gpu_interp, rho=rho_Cu,
                 radius_x=radius_x, radius_y=radius_y, length=length, wake_function_time=t,
                 wake_function_integ_wl=rw_total_Wlong_integ, wake_function_integ_wtx=rw_total_Wxdip_integ,
                 wake_function_integ_wty=rw_total_Wydip_integ, r_lrrw=r_lrrw, x3_lrrw=x3_lrrw,
-                y3_lrrw=y3_lrrw)
+                y3_lrrw=y3_lrrw, x_aperture_radius=np.inf, y_aperture_radius=np.inf)
 
 # Run simulation
 print('Turns: ' + str(turns))
@@ -203,7 +204,7 @@ print('Turns: ' + str(turns))
 curm_ti = int(10)
 
 for i in tqdm(range(1), desc='GPU Processing'):
-    cumap.track(mybeam, turns, turns_lrrw, curm_ti, gap, culm=True, cusr=False, cutm=True, curfmc=True, curfhc=False,
-                cusrrw=False, culrrw=True, cuelliptic=False, curm=False, cugeneralwake=False)
+    cumap.track(mybeam, turns, turns_lrrw, curm_ti, gap, culm=True, cusr=True, cutm=True, curfmc=True, curfhc=False,
+                cusrrw=True, culrrw=True, cuelliptic=False, curm=False, cugeneralwake=False, rectangularaperture=False)
 
 print("All tracking has been done.")
