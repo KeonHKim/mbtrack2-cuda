@@ -8,4 +8,5 @@ matplotlib
 seaborn
 mpmath
 ipykernel
+tqdm
 accelerator-toolbox

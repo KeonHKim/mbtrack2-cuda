@@ -305,8 +305,14 @@ class Bunch:
             cov[4,4] = sigma_0**2
             cov[5,5] = sigma_delta**2
             
-        np.random.seed(1)
         values = np.random.multivariate_normal(mean, cov, size=self.mp_number)
+
+        # condition = np.abs(values[:,4] - mean[4]) > 2 * np.sqrt(cov[4,4])
+        # values[condition, 0] = 0
+        # values[condition, 1] = 0
+        # values[condition, 2] = 0
+        # values[condition, 3] = 0
+
         self.particles["x"] = values[:,0]
         self.particles["xp"] = values[:,1]
         self.particles["y"] = values[:,2]
@@ -715,15 +721,9 @@ class Beam:
                 if self._filling_pattern[bunch_num]:
                     bunch = Bunch(self.ring, mp_per_bunch_cuda, current, track_alive)
                     bunch.init_gaussian()
+                    self[bunch_num] = bunch
                 else:
-                    bunch = Bunch(self.ring, mp_per_bunch_cuda, current, track_alive)
-                    bunch.particles["x"] /= 0
-                    bunch.particles["xp"] /= 0
-                    bunch.particles["y"] /= 0
-                    bunch.particles["yp"] /= 0
-                    bunch.particles["tau"] /= 0
-                    bunch.particles["delta"] /= 0
-                self[bunch_num] = bunch
+                    pass
         else:
             for bunch in self.not_empty:
                 bunch.init_gaussian()

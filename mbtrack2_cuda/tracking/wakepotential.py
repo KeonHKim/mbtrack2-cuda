@@ -302,11 +302,6 @@ class WakePotential(Element):
         
         """
 
-        os.chdir("/home/alphaover2pi/projects/mbtrack2-cuda/data/")
-        filename_tau = f"tau_cpu.bin"
-        with open(filename_tau, "wb") as file:
-            pickle.dump(bunch["tau"], file)
-
         if len(bunch) != 0:
             self.charge_density(bunch)
             for wake_type in self.types:
