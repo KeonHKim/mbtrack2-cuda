@@ -304,7 +304,7 @@ class Bunch:
             cov[5,3] = optics.local_dispersion[3]*self.ring.sigma_delta**2
             cov[4,4] = sigma_0**2
             cov[5,5] = sigma_delta**2
-
+            
         values = np.random.multivariate_normal(mean, cov, size=self.mp_number)
 
         # condition = np.abs(values[:,4] - mean[4]) > 2 * np.sqrt(cov[4,4])

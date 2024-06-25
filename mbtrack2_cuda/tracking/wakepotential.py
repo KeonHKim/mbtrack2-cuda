@@ -72,7 +72,7 @@ class WakePotential(Element):
         
     """
     
-    def __init__(self, ring, wakefield, n_bin=65):
+    def __init__(self, ring, wakefield, n_bin=90):
         self.wakefield = wakefield
         self.types = self.wakefield.wake_components
         self.n_types = len(self.wakefield.wake_components)
@@ -171,7 +171,6 @@ class WakePotential(Element):
             
         setattr(self, "dipole_" + plane, dipole0)
         return dipole0
-    
     
     def prepare_wakefunction(self, wake_type, tau, save_data=True):
         """
@@ -275,7 +274,7 @@ class WakePotential(Element):
         
         profile0 = np.interp(tau0, self.tau, self.rho, 0, 0)
         
-        if wake_type == "Wlong" or wake_type == "Wxquad" or wake_type == "Wyquad":
+        if wake_type == "Wlong" or wake_type == "Wxquad" or wake_type == "Wyquad" or wake_type == "Wxcst" or wake_type == "Wycst":
             Wp = signal.convolve(profile0, W0*-1, mode='same')*dtau0
         elif wake_type == "Wxdip":
             dipole0 = self.dipole_moment(bunch, "x", tau0)
@@ -288,9 +287,8 @@ class WakePotential(Element):
         
         setattr(self,"profile0_" + wake_type, profile0)
         setattr(self, wake_type, Wp)
-
         return tau0, Wp
-    
+
     @Element.parallel
     def track(self, bunch):
         """
@@ -303,21 +301,12 @@ class WakePotential(Element):
         bunch : Bunch or Beam object.
         
         """
-        
-        os.chdir('/home/alphaover2pi/projects/mbtrack2-cuda/data/')
-        filename_tau = f'tau_cpu.bin'
-        with open(filename_tau, 'wb') as file:
-            pickle.dump(bunch["tau"], file)
 
         if len(bunch) != 0:
             self.charge_density(bunch)
             for wake_type in self.types:
                 tau0, Wp = self.get_wakepotential(bunch, wake_type)
                 Wp_interp = np.interp(bunch["tau"], tau0 + self.tau_mean, Wp, 0, 0)
-
-                filename_Wp_interp = f'P_{wake_type}_interp.bin'
-                with open(filename_Wp_interp, 'wb') as file:
-                    pickle.dump(Wp_interp, file)
 
                 if wake_type == "Wlong":
                     bunch["delta"] += Wp_interp * bunch.charge / self.ring.E0
@@ -331,6 +320,10 @@ class WakePotential(Element):
                 elif wake_type == "Wyquad":
                     bunch["yp"] += (bunch["y"] * Wp_interp * bunch.charge 
                                     / self.ring.E0)
+                elif wake_type == "Wxcst":
+                    bunch["xp"] += Wp_interp * bunch.charge / self.ring.E0
+                elif wake_type == "Wycst":
+                    bunch["yp"] += Wp_interp * bunch.charge / self.ring.E0
                 
     def plot_last_wake(self, wake_type, plot_rho=True, plot_dipole=False, 
                        plot_wake_function=True):
@@ -359,18 +352,12 @@ class WakePotential(Element):
                   "Wxdip" : r"$W_{p,x}^{D} (V/pC)$",
                   "Wydip" : r"$W_{p,y}^{D} (V/pC)$",
                   "Wxquad" : r"$W_{p,x}^{Q} (V/pC/m)$",
-                  "Wyquad" : r"$W_{p,y}^{Q} (V/pC/m)$"}
+                  "Wyquad" : r"$W_{p,y}^{Q} (V/pC/m)$",
+                  "Wxcst" : r"$W_{p,x}^{M}$ (V/pC)",
+                  "Wycst" : r"$W_{p,y}^{M}$ (V/pC)",}
         
         Wp = getattr(self, wake_type)
         tau0 = getattr(self, "tau0_" + wake_type)
-        
-        os.chdir('/home/alphaover2pi/projects/mbtrack2-cuda/data/')
-        filename_tau0 = f'tau0_{wake_type}.bin'
-        filename_Wp = f'P_{wake_type}.bin'
-        with open(filename_tau0, 'wb') as file:
-            pickle.dump(tau0, file)
-        with open(filename_Wp, 'wb') as file:
-            pickle.dump(Wp, file)
         
         fig, ax = plt.subplots()
         ax.plot(tau0*1e12, Wp*1e-12, label=labels[wake_type])
@@ -756,7 +743,6 @@ class LongRangeResistiveWall(Element):
             self.x[:,0] = mean_all[0, beam.filling_pattern]
             self.y[:,0] = mean_all[2, beam.filling_pattern]
             self.charge[:,0] = charge_all[beam.filling_pattern]
-        
     
     def get_kick(self, rank, wake_type):
         """
@@ -778,9 +764,15 @@ class LongRangeResistiveWall(Element):
         sum_kick = 0
         for j in range(self.nt):
             for i in range(self.nb):
-                if (j == 0) and (rank <= i):
+                # if (j == 0) and (rank <= i):
+                #     continue
+                # deltaT = self.tau[i, j] - self.tau[rank, 0]
+                if (j == 0) and (rank == i):
                     continue
-                deltaT = self.tau[i,j] - self.tau[rank, 0]
+                else:
+                    deltaT = self.tau[i, j] - self.tau[rank, 0]
+                    if deltaT < 0:
+                        deltaT += self.ring.T0
                 if wake_type == "Wlong":
                     sum_kick += self.Wlong(deltaT) * self.charge[i,j]
                 elif wake_type == "Wxdip":

@@ -1798,7 +1798,7 @@ class CUDAMap(Element):
         @cuda.jit
         def get_kick_btb_kernel(num_bunch, turns_lrrw, device_tau_lrrw, device_x_lrrw, device_y_lrrw,
                                 device_sum_kick_tau, device_sum_kick_x, device_sum_kick_y,
-                                device_charge_per_bunch, amp_wl_long, amp_wt_long, yoklong, yokxdip, yokydip):
+                                charge_per_bunch, amp_wl_long, amp_wt_long, ye):
             """
             Preparation of bunch to bunch kick
             This is one of several kernels used to calculate the long-range resistive wall wake.
@@ -2341,13 +2341,9 @@ class CUDAMap(Element):
                 
             for k in range(turns):                    
                 if culm:
-                    longmap1_kernel[blockpergrid, threadperblock, stream](
-                            num_bunch, num_particle, device_delta, self.ring.U0, self.ring.E0
-                            )
+                    longmap1_kernel[blockpergrid, threadperblock, stream](num_bunch, num_particle, device_delta, self.ring.U0, self.ring.E0)
 
-                    longmap2_kernel[blockpergrid, threadperblock, stream](
-                            num_bunch, num_particle, device_tau, device_delta, self.ring.ac, self.ring.T0
-                            )
+                    longmap2_kernel[blockpergrid, threadperblock, stream](num_bunch, num_particle, device_tau, device_delta, self.ring.ac, self.ring.T0)
 
                 if cusr:
                     rng_kernel[blockpergrid, threadperblock, stream](
