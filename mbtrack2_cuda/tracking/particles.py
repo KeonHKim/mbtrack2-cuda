@@ -304,8 +304,15 @@ class Bunch:
             cov[5,3] = optics.local_dispersion[3]*self.ring.sigma_delta**2
             cov[4,4] = sigma_0**2
             cov[5,5] = sigma_delta**2
-            
+
         values = np.random.multivariate_normal(mean, cov, size=self.mp_number)
+
+        # condition = np.abs(values[:,4] - mean[4]) > 2 * np.sqrt(cov[4,4])
+        # values[condition, 0] = 0
+        # values[condition, 1] = 0
+        # values[condition, 2] = 0
+        # values[condition, 3] = 0
+
         self.particles["x"] = values[:,0]
         self.particles["xp"] = values[:,1]
         self.particles["y"] = values[:,2]
@@ -313,7 +320,7 @@ class Bunch:
         self.particles["tau"] = values[:,4]
         self.particles["delta"] = values[:,5]
         
-    def binning(self, dimension="tau", n_bin=90):
+    def binning(self, dimension="tau", n_bin=80):
         """
         Bin macro-particles.
 
@@ -714,15 +721,9 @@ class Beam:
                 if self._filling_pattern[bunch_num]:
                     bunch = Bunch(self.ring, mp_per_bunch_cuda, current, track_alive)
                     bunch.init_gaussian()
+                    self[bunch_num] = bunch
                 else:
-                    bunch = Bunch(self.ring, mp_per_bunch_cuda, current, track_alive)
-                    bunch.particles["x"] /= 0
-                    bunch.particles["xp"] /= 0
-                    bunch.particles["y"] /= 0
-                    bunch.particles["yp"] /= 0
-                    bunch.particles["tau"] /= 0
-                    bunch.particles["delta"] /= 0
-                self[bunch_num] = bunch
+                    pass
         else:
             for bunch in self.not_empty:
                 bunch.init_gaussian()
@@ -822,7 +823,7 @@ class Beam:
     
     def mpi_init(self):
         """Switch on MPI parallelisation and initialise a Mpi object"""
-        from mbtrack2.tracking.parallel import Mpi
+        from mbtrack2_cuda.tracking.parallel import Mpi
         self.mpi = Mpi(self.filling_pattern)
         self.mpi_switch = True
         
