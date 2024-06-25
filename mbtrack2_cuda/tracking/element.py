@@ -10,7 +10,7 @@ import os
 import pickle
 from numba import cuda
 from numba.cuda.random import create_xoroshiro128p_states, xoroshiro128p_normal_float32
-from math import ceil, sqrt, sin, cos, inf, isnan
+from math import ceil, sqrt, sin, cos, inf
 from scipy.constants import mu_0, c, pi
 from abc import ABCMeta, abstractmethod
 from functools import wraps
@@ -2161,14 +2161,6 @@ class CUDAMap(Element):
                     charge_per_mp[idx_bunch] = beam[non_zero_indices[idx_bunch]].charge_per_mp
                     init_long_pos[idx_bunch] = init_long_pos_uni[non_zero_indices[idx_bunch]]
 
-            # os.chdir("/home/user2/projects/mbtrack2-cuda/data/")
-            
-            # tau_save_initial = np.empty((num_particle), dtype="f4")
-            # tau_save_initial = tau[:, 0]
-            # filename_tau_save_initial = "gpu_tau_save_initial_80ma.bin"
-            # with open(filename_tau_save_initial, "wb") as file:
-            #     pickle.dump(tau_save_initial, file)
-
             threadperblock_x = 16
             threadperblock_y = 16
             threadperblock = (threadperblock_x, threadperblock_y)
@@ -2759,17 +2751,11 @@ class CUDAMap(Element):
             data_folder_path = os.path.join(current_file_path, "..", "..", "data")
             os.chdir(data_folder_path)
             
-            # filename_bunch_length_sin = f"gpu_bunch_length_{self.idxs}ma_heps_single.bin"
-            # filename_energy_spread_sin = f"gpu_energy_spread_{self.idxs}ma_heps_single.bin"
-            # filename_Jx_sin = f"gpu_Jx_{self.idxs}ma_heps_single.bin"
-            # filename_Jy_sin = f"gpu_Jy_{self.idxs}ma_heps_single.bin"
-            # filename_tau_save = f"gpu_tau_save_{self.idxs}ma_heps_single.bin"
-
-            filename_bunch_length_sin = f"gpu_bunch_length_{int(self.idxs*self.ring.h)}ma_heps_uniform.bin"
-            filename_energy_spread_sin = f"gpu_energy_spread_{int(self.idxs*self.ring.h)}ma_heps_uniform.bin"
-            filename_Jx_sin = f"gpu_Jx_{int(self.idxs*self.ring.h)}ma_heps_uniform.bin"
-            filename_Jy_sin = f"gpu_Jy_{int(self.idxs*self.ring.h)}ma_heps_uniform.bin"
-            filename_tau_save = f"gpu_tau_save_{int(self.idxs*self.ring.h)}ma_heps_uniform.bin"
+            filename_bunch_length_sin = f"gpu_bunch_length_tracking_result.bin"
+            filename_energy_spread_sin = f"gpu_energy_spread_tracking_result.bin"
+            filename_Jx_sin = f"gpu_Jx_tracking_result.bin"
+            filename_Jy_sin = f"gpu_Jy_tracking_result.bin"
+            filename_tau_save = f"gpu_tau_save_tracking_result.bin"
 
             with open(filename_bunch_length_sin, "wb") as file:
                 pickle.dump(bunch_length[:, 0], file)
