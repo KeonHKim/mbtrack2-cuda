@@ -2129,14 +2129,18 @@ class CUDAMap(Element):
             amp_wl_long_integ = sqrt(Z0 * self.rho / (c * pi)) / (2*pi*self.radius_y) * self.length
             amp_wt_24_integ = (Z0*c**2*t0**2) / (pi*self.radius_y**4) * self.length
             amp_wt_long_integ = 2 * sqrt(Z0*c*self.rho / pi) / (pi*self.radius_y**3) * self.length
-            if not cugeneralwake:
-                amp_wl_long = -1 * sqrt(Z0*self.rho / (c*pi)) / (4*pi*self.radius_y) * self.length
-                amp_wt_long = sqrt(Z0*c*self.rho / pi) / (pi*self.radius_y**3) * self.length
+
+            amp_wl_long = -1 * sqrt(Z0*self.rho / (c*pi)) / (4*pi*self.radius_y) * self.length
+            amp_wt_long = sqrt(Z0*c*self.rho / pi) / (pi*self.radius_y**3) * self.length
             
-            if cugeneralwake:
-                amp_wl_long = -1 * sqrt(Z0*self.rho / (c*pi)) / (4*pi*self.r_lrrw) * self.length
-                amp_wtx_long = sqrt(Z0*c*self.rho / pi) / (pi*self.x3_lrrw**3) * self.length
-                amp_wty_long = sqrt(Z0*c*self.rho / pi) / (pi*self.y3_lrrw**3) * self.length
+            # if not cugeneralwake:
+            #     amp_wl_long = -1 * sqrt(Z0*self.rho / (c*pi)) / (4*pi*self.radius_y) * self.length
+            #     amp_wt_long = sqrt(Z0*c*self.rho / pi) / (pi*self.radius_y**3) * self.length
+            
+            # if cugeneralwake:
+            #     amp_wl_long = -1 * sqrt(Z0*self.rho / (c*pi)) / (4*pi*self.r_lrrw) * self.length
+            #     amp_wtx_long = sqrt(Z0*c*self.rho / pi) / (pi*self.x3_lrrw**3) * self.length
+            #     amp_wty_long = sqrt(Z0*c*self.rho / pi) / (pi*self.y3_lrrw**3) * self.length
 
             non_zero_indices = [idx_fp for idx_fp, val_fp in enumerate(self.filling_pattern) if val_fp != 0]
             for idx_bunch in range(num_bunch):
@@ -2754,7 +2758,7 @@ class CUDAMap(Element):
             current_file_path = os.path.dirname(os.path.abspath(__file__))
             data_folder_path = os.path.join(current_file_path, "..", "..", "data")
             os.chdir(data_folder_path)
-
+            
             filename_bunch_length_sin = f"gpu_bunch_length_tracking_result.bin"
             filename_energy_spread_sin = f"gpu_energy_spread_tracking_result.bin"
             filename_Jx_sin = f"gpu_Jx_tracking_result.bin"
