@@ -1798,7 +1798,7 @@ class CUDAMap(Element):
         @cuda.jit
         def get_kick_btb_kernel(num_bunch, turns_lrrw, device_tau_lrrw, device_x_lrrw, device_y_lrrw,
                                 device_sum_kick_tau, device_sum_kick_x, device_sum_kick_y,
-                                charge_per_bunch, amp_wl_long, amp_wt_long, ye):
+                                device_charge_per_bunch, amp_wl_long, amp_wt_long, yoklong, yokxdip, yokydip):
             """
             Preparation of bunch to bunch kick
             This is one of several kernels used to calculate the long-range resistive wall wake.
@@ -2333,9 +2333,13 @@ class CUDAMap(Element):
                 
             for k in range(turns):                    
                 if culm:
-                    longmap1_kernel[blockpergrid, threadperblock, stream](num_bunch, num_particle, device_delta, self.ring.U0, self.ring.E0)
+                    longmap1_kernel[blockpergrid, threadperblock, stream](
+                            num_bunch, num_particle, device_delta, self.ring.U0, self.ring.E0
+                        )
 
-                    longmap2_kernel[blockpergrid, threadperblock, stream](num_bunch, num_particle, device_tau, device_delta, self.ring.ac, self.ring.T0)
+                    longmap2_kernel[blockpergrid, threadperblock, stream](
+                            num_bunch, num_particle, device_tau, device_delta, self.ring.ac, self.ring.T0
+                        )
 
                 if cusr:
                     rng_kernel[blockpergrid, threadperblock, stream](
@@ -2750,7 +2754,7 @@ class CUDAMap(Element):
             current_file_path = os.path.dirname(os.path.abspath(__file__))
             data_folder_path = os.path.join(current_file_path, "..", "..", "data")
             os.chdir(data_folder_path)
-            
+
             filename_bunch_length_sin = f"gpu_bunch_length_tracking_result.bin"
             filename_energy_spread_sin = f"gpu_energy_spread_tracking_result.bin"
             filename_Jx_sin = f"gpu_Jx_tracking_result.bin"
