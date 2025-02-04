@@ -1,11 +1,11 @@
-mbtrack2-cuda
+MBTRACK2-CUDA
 ========
 
-mbtrack2-cuda is the CUDA version of mbtrack2.
+MBTRACK2-CUDA is a CUDA ported version of MBTRACK2.
 
-mbtrack2-cuda supports GPU parallel computing using Python with the Numba compiler.
+MBTRACK2-CUDA supports GPU parallel computing using Python with Numba-CUDA.
 
-The original mbtrack2 code can be found at the following link.
+The original MBTRACK2 code can be found at the following link.
 ```
 https://gitlab.synchrotron-soleil.fr/PA/collective-effects/mbtrack2
 ```
