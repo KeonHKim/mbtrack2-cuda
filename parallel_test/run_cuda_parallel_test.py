@@ -11,7 +11,6 @@ import warnings
 import numpy as np
 from scipy.constants import mu_0, c
 from scipy.fft import irfft, ihfft
-from scipy.integrate import quad
 from mbtrack2_cuda.impedance import CircularResistiveWall
 from mbtrack2_cuda.tracking import Synchrotron, Electron
 from mbtrack2_cuda.tracking import LongitudinalMap, TransverseMap, CUDAMap
@@ -59,6 +58,9 @@ ring = Synchrotron(h=h, optics=optics, particle=particle, L=L, E0=E0, ac=ac,
 
 filling_pattern = np.zeros(ring.h) # We will define filling_pattern later.
 
+mean_beta = np.array([4.24, 5.98])
+norm_beta = mean_beta / local_beta
+
 rho_Cu = 1.68e-8 # Copper's resistivity in [Ohm.m]
 rho_Al = 3.32e-8 # A6063
 rho = rho_Cu
@@ -98,11 +100,12 @@ rw_total_Wlong_integ = np.cumsum(wl_circular) * delta_tau
 rw_total_Wxdip_integ = np.cumsum(wt_circular) * delta_tau
 rw_total_Wydip_integ = np.cumsum(wt_circular) * delta_tau
 
-indices = [1, 5, 10] # Current array in [mA]
+indices = [200/h] # Current array in [mA]
 for idxs in tqdm(indices, desc="GPU"):
     turns = int(3e4)
     mp_number = int(10e4)
     current = idxs*1e-3 # current in [A]
+    thread_per_block = int(16) # Choose int(16) or int(32). Select int(32) if the macro-particle count is int(2e6) or more.
     print(f"Bunch current: {current*1e3} [mA]")
     gap = int(0)
     m1 = 1
@@ -117,23 +120,9 @@ for idxs in tqdm(indices, desc="GPU"):
     num_bin_gpu = int(100) # Number of bins for self-bunch wakes
 
     # num_bin_gpu_interp should be checked with longitudinal wake potential profile.
-    num_bin_gpu_interp = int(3000) # Interpolates the total number of bins for accurate calculations
-
-    # filling_pattern = np.zeros(ring.h)
-    # n_fill = 100
-    # step = 13
-    # idx = 0
-    # for _ in range(n_fill):
-    #     filling_pattern[idx] = current / n_fill
-    #     idx += step
-
-    # filling_pattern = np.zeros(ring.h)
-    # n_fill = h - gap
-    # step = 1
-    # idx = 0
-    # for _ in range(n_fill):
-    #     filling_pattern[idx] = current / n_fill
-    #     idx += step
+    # Interpolates the total number of bins for accurate calculations
+    # Recommended to be less than int(1e4)
+    num_bin_gpu_interp = int(6000)
 
     # GPU Calculations
     # Run simulation
@@ -152,12 +141,28 @@ for idxs in tqdm(indices, desc="GPU"):
     # cugeneralwakeshortlong: for self-bunch wake calculations, we use short-range resistive wall wakes for tau < t_crit
     # and we use long-range resistive wall wakes for tau > t_crit
 
+    # monitordip; whether to save dipole moment data
+    # dblPrec6D: whether to save 6D phase space coordinates as double-precision or single-precision
+
+
     # Important!
+    # BunchToX=True, BunchToJ=False >> regular multi-bunch configuration
+    # BunchToX=False, BunchToJ=False >> regular single bunch configuration
+    # BunchToX=False, BunchToJ=True >> single bunch or multi-bunch configuration with number of macro-particle is greater than int(2e6)
+
     # cusbwake=False, cugeneralwake=False, cugeneralwakeshortlong=False >> We don't calculate any self-bunch wakes
-    # cusbwake=True, cugeneralwake=False, cugeneralwakeshortlong=False >> We calculate self-bunch resistive wall wakes
+
+    # cusbwake=True, cugeneralwake=False, cugeneralwakeshortlong=False,
+    # curwcircularseries=True >> We calculate self-bunch resistive wall wakes with series expansion formulae
+
+    # cusbwake=True, cugeneralwake=False, cugeneralwakeshortlong=False,
+    # curwcircularseries=True >> We calculate self-bunch resistive wall wakes with Faddeeva function formulae
+
     # cusbwake=True, cugeneralwake=True, cugeneralwakeshortlong=False >> We calculate self-bunch arbitrary wakes
+
     # cusbwake=True, cugeneralwake=False, cugeneralwakeshortlong=True >> We calculate self-bunch resistive wall wakes but
     # the short-range wakes must be given by the user (This method is intended for the ellipitical or parallel plates case.)
+
     # cusbwake=True, cugeneralwake=True, cugeneralwakeshortlong=True >> This is not valid. you should use either one of
     # cugeneralwake=True or cugeneralwakeshortlong=True
 
@@ -165,20 +170,23 @@ for idxs in tqdm(indices, desc="GPU"):
 
     # Turn interval for monitoring -> It can be ignored if curm is False.
     curm_ti = int(10)
+    num_bunch = 5
+    for ind in range(num_bunch):
+        filling_pattern[ind] = h * current / num_bunch
 
-    filling_pattern[0] = current
     mybeam = Beam(ring)
     mybeam.init_beam(filling_pattern, mp_per_bunch=mp_number, mpi=False, cuda=CUDA_PARALLEL)
 
     cumap = CUDAMap(ring, filling_pattern=filling_pattern, Vc1=Vc1, Vc2=Vc2, m1=m1, m2=m2, theta1=theta1, theta2=theta2,
-                num_bin=num_bin_gpu, num_bin_interp=num_bin_gpu_interp, rho=rho,
+                num_bin=num_bin_gpu, num_bin_interp=num_bin_gpu_interp, norm_beta=norm_beta, rho=rho,
                 radius_x=radius_x, radius_y=radius_y, length=length, wake_function_time=tau_array,
                 wake_function_integ_wl=rw_total_Wlong_integ, wake_function_integ_wtx=rw_total_Wxdip_integ,
                 wake_function_integ_wty=rw_total_Wydip_integ, t_crit=20*t0, idxs=idxs,
-                r_lrrw=0, x3_lrrw=0, y3_lrrw=0, x_aperture_radius=10, y_aperture_radius=10)
+                r_lrrw=0, x3_lrrw=0, y3_lrrw=0, x_aperture_radius=10, y_aperture_radius=10,
+                thread_per_block=thread_per_block)
 
     cumap.track(mybeam, turns, turns_lrrw, curm_ti, culm=True, cusr=True, cutm=True, curfmc=True, curfhc=False,
-            cusbwake=True, culrrw=False, cuelliptic=False, curm=False, cugeneralwake=False, cugeneralwakeshortlong=False,
-            rectangularaperture=False)
+            cusbwake=True, culrrw=True, cuelliptic=False, curm=False, cugeneralwake=False, cugeneralwakeshortlong=False,
+            curwcircularseries=True, rectangularaperture=False, monitordip=False, dblPrec6D=False, BunchToX=True, BunchToJ=False)
 
 print("All tracking has been done.")
