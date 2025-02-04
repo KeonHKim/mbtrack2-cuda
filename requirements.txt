@@ -1,5 +1,6 @@
 numpy
 numba
+numba-cuda
 pandas
 scipy
 h5py
