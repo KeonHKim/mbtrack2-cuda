@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__version__="0.4"
+__version__="0.5"
 from mbtrack2.tracking import *
 from mbtrack2.impedance import *
 from mbtrack2.instability import *
