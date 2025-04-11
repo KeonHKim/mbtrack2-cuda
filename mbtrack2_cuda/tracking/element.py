@@ -7,7 +7,7 @@ included in the tracking.
 import numpy as np
 import numba
 import os
-import pickle
+import h5py as hp
 from numba import cuda
 from numba.cuda.random import create_xoroshiro128p_states, \
      xoroshiro128p_normal_float32, xoroshiro128p_normal_float64
@@ -4112,45 +4112,21 @@ class CUDAMap(Element):
 
             for i in range(num_bunch):
                 tau_save = tau[:, i]
-                filename_bunch_length = f"gpu_bunch_length_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                filename_energy_spread = f"gpu_energy_spread_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                filename_Jx = f"gpu_Jx_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                filename_Jy = f"gpu_Jy_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                filename_tau_save = f"gpu_tau_save_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                filename_beam_sizeX = f"gpu_sizeX_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                filename_beam_sizeY = f"gpu_sizeY_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                filename_beam_comS = f"gpu_comS_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                filename_beam_comX = f"gpu_comX_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                filename_beam_comY = f"gpu_comY_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                if monitordip:
-                    filename_dipX = f"gpu_dipX_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-                    filename_dipY = f"gpu_dipY_{int(self.idxs*self.ring.h)}ma_bunch_train{int(num_bunch)}_{int(i)}.bin"
-
-                with open(filename_bunch_length, "wb") as file:
-                    pickle.dump(bunch_length[:, i], file)
-                with open(filename_energy_spread, "wb") as file:
-                    pickle.dump(energy_spread[:, i], file)
-                with open(filename_Jx, "wb") as file:
-                    pickle.dump(Jx[:, i], file)
-                with open(filename_Jy, "wb") as file:
-                    pickle.dump(Jy[:, i], file)
-                with open(filename_tau_save, "wb") as file:
-                    pickle.dump(tau_save, file)
-                with open(filename_beam_sizeX, "wb") as file:
-                    pickle.dump(beam_sizeX[:, i], file)
-                with open(filename_beam_sizeY, "wb") as file:
-                    pickle.dump(beam_sizeY[:, i], file)
-                with open(filename_beam_comS, "wb") as file:
-                    pickle.dump(beam_comS[:, i], file)
-                with open(filename_beam_comX, "wb") as file:
-                    pickle.dump(beam_comX[:, i], file)
-                with open(filename_beam_comY, "wb") as file:
-                    pickle.dump(beam_comY[:, i], file)
-                if monitordip:
-                    with open(filename_dipX, "wb") as file:
-                        pickle.dump(dipX[:, :, i], file)
-                    with open(filename_dipY, "wb") as file:
-                        pickle.dump(dipY[:, :, i], file)
+                filename = f"gpu_data_{int(self.idxs*self.ring.h)}ma_k4gsr_chro0_{int(num_bunch)}_{i}.hdf5"
+                with hp.File(filename, "w") as f:
+                    f.create_dataset("bunch_length", data=bunch_length[:, i])
+                    f.create_dataset("energy_spread", data=energy_spread[:, i])
+                    f.create_dataset("Jx", data=Jx[:, i])
+                    f.create_dataset("Jy", data=Jy[:, i])
+                    f.create_dataset("tau_save", data=tau_save)
+                    f.create_dataset("beam_sizeX", data=beam_sizeX[:, i])
+                    f.create_dataset("beam_sizeY", data=beam_sizeY[:, i])
+                    f.create_dataset("beam_comS", data=beam_comS[:, i])
+                    f.create_dataset("beam_comX", data=beam_comX[:, i])
+                    f.create_dataset("beam_comY", data=beam_comY[:, i])
+                    if monitordip:
+                        f.create_dataset("dipX", data=dipX[:, :, i])
+                        f.create_dataset("dipY", data=dipY[:, :, i])
 
         else:
             raise ValueError("To perform GPU calculations, CUDA_PARALLEL must be enabled in the mybeam.init_beam.")

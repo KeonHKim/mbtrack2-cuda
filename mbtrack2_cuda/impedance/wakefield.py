@@ -602,7 +602,7 @@ class Impedance(ComplexData):
         frequency = self.data.index[positive_index]
         
         # Import here to avoid circular import
-        from mbtrack2.utilities import spectral_density
+        from mbtrack2_cuda.utilities import spectral_density
         sd = spectral_density(frequency, sigma, m=0)
         
         if(self.component_type == "long"):
